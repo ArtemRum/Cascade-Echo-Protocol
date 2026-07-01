@@ -1,0 +1,59 @@
+{
+  "segments": {
+    "dmz": { "name": "DMZ", "label": "DMZ (Perimeter)", "ids": [1,2,3,4,5,6,7,8,9,10] },
+    "core": { "name": "Core", "label": "Core (Internal)", "ids": [11,12,13,14,15,16,17,18,19,20] },
+    "archive": { "name": "Archive", "label": "Archive (Storage)", "ids": [21,22,23,24,25,26,27,28,29,30] }
+  },
+  "routers": {
+    "dmz-router": { "segment": "dmz", "ip": "10.0.0.1" },
+    "core-router": { "segment": "core", "ip": "172.16.0.1" },
+    "archive-router": { "segment": "archive", "ip": "192.168.0.1" }
+  },
+  "nodes": {
+    "dmz-01": { "id": 1, "segment": "dmz", "ip": "10.0.1.1", "neighbors": ["dmz-02","dmz-03","dmz-05"], "importance": 2, "type": "webserver" },
+    "dmz-02": { "id": 2, "segment": "dmz", "ip": "10.0.1.2", "neighbors": ["dmz-01","dmz-04","dmz-06"], "importance": 2, "type": "webserver" },
+    "dmz-03": { "id": 3, "segment": "dmz", "ip": "10.0.1.3", "neighbors": ["dmz-01","dmz-04","dmz-07"], "importance": 2, "type": "proxy" },
+    "dmz-04": { "id": 4, "segment": "dmz", "ip": "10.0.1.4", "neighbors": ["dmz-02","dmz-03","dmz-08"], "importance": 2, "type": "proxy" },
+    "dmz-05": { "id": 5, "segment": "dmz", "ip": "10.0.1.5", "neighbors": ["dmz-01","dmz-06","dmz-09"], "importance": 2, "type": "mail" },
+    "dmz-06": { "id": 6, "segment": "dmz", "ip": "10.0.1.6", "neighbors": ["dmz-02","dmz-05","dmz-10"], "importance": 2, "type": "mail" },
+    "dmz-07": { "id": 7, "segment": "dmz", "ip": "10.0.1.7", "neighbors": ["dmz-03","dmz-08","dmz-10"], "importance": 2, "type": "dns" },
+    "dmz-08": { "id": 8, "segment": "dmz", "ip": "10.0.1.8", "neighbors": ["dmz-04","dmz-07","dmz-09"], "importance": 2, "type": "dns" },
+    "dmz-09": { "id": 9, "segment": "dmz", "ip": "10.0.1.9", "neighbors": ["dmz-05","dmz-08","dmz-10"], "importance": 2, "type": "app" },
+    "dmz-10": { "id": 10, "segment": "dmz", "ip": "10.0.1.10", "neighbors": ["dmz-06","dmz-07","dmz-09"], "importance": 2, "type": "app" },
+    "core-11": { "id": 11, "segment": "core", "ip": "172.16.0.11", "neighbors": ["core-12","core-14","core-17"], "importance": 5, "type": "db" },
+    "core-12": { "id": 12, "segment": "core", "ip": "172.16.0.12", "neighbors": ["core-11","core-13","core-15"], "importance": 5, "type": "db" },
+    "core-13": { "id": 13, "segment": "core", "ip": "172.16.0.13", "neighbors": ["core-12","core-14","core-16"], "importance": 5, "type": "app" },
+    "core-14": { "id": 14, "segment": "core", "ip": "172.16.0.14", "neighbors": ["core-11","core-13","core-18"], "importance": 5, "type": "app" },
+    "core-15": { "id": 15, "segment": "core", "ip": "172.16.0.15", "neighbors": ["core-12","core-16","core-19"], "importance": 5, "type": "queue" },
+    "core-16": { "id": 16, "segment": "core", "ip": "172.16.0.16", "neighbors": ["core-13","core-15","core-20"], "importance": 5, "type": "queue" },
+    "core-17": { "id": 17, "segment": "core", "ip": "172.16.0.17", "neighbors": ["core-11","core-18","core-19"], "importance": 5, "type": "worker" },
+    "core-18": { "id": 18, "segment": "core", "ip": "172.16.0.18", "neighbors": ["core-14","core-17","core-20"], "importance": 5, "type": "worker" },
+    "core-19": { "id": 19, "segment": "core", "ip": "172.16.0.19", "neighbors": ["core-15","core-17","core-20"], "importance": 5, "type": "monitor" },
+    "core-20": { "id": 20, "segment": "core", "ip": "172.16.0.20", "neighbors": ["core-16","core-18","core-19"], "importance": 5, "type": "monitor" },
+    "archive-21": { "id": 21, "segment": "archive", "ip": "192.168.0.21", "neighbors": ["archive-22","archive-24","archive-27"], "importance": 3, "type": "storage" },
+    "archive-22": { "id": 22, "segment": "archive", "ip": "192.168.0.22", "neighbors": ["archive-21","archive-23","archive-25"], "importance": 3, "type": "storage" },
+    "archive-23": { "id": 23, "segment": "archive", "ip": "192.168.0.23", "neighbors": ["archive-22","archive-24","archive-26"], "importance": 3, "type": "backup" },
+    "archive-24": { "id": 24, "segment": "archive", "ip": "192.168.0.24", "neighbors": ["archive-21","archive-23","archive-28"], "importance": 3, "type": "backup" },
+    "archive-25": { "id": 25, "segment": "archive", "ip": "192.168.0.25", "neighbors": ["archive-22","archive-26","archive-29"], "importance": 3, "type": "cold" },
+    "archive-26": { "id": 26, "segment": "archive", "ip": "192.168.0.26", "neighbors": ["archive-23","archive-25","archive-30"], "importance": 3, "type": "cold" },
+    "archive-27": { "id": 27, "segment": "archive", "ip": "192.168.0.27", "neighbors": ["archive-21","archive-28","archive-29"], "importance": 3, "type": "audit" },
+    "archive-28": { "id": 28, "segment": "archive", "ip": "192.168.0.28", "neighbors": ["archive-24","archive-27","archive-30"], "importance": 3, "type": "audit" },
+    "archive-29": { "id": 29, "segment": "archive", "ip": "192.168.0.29", "neighbors": ["archive-25","archive-27","archive-30"], "importance": 3, "type": "archive" },
+    "archive-30": { "id": 30, "segment": "archive", "ip": "192.168.0.30", "neighbors": ["archive-26","archive-28","archive-29"], "importance": 3, "type": "archive" }
+  },
+  "cross_segment_links": [
+    { "from": "dmz-05", "to": "core-11", "router": "dmz-router" },
+    { "from": "dmz-06", "to": "core-12", "router": "dmz-router" },
+    { "from": "dmz-09", "to": "core-15", "router": "dmz-router" },
+    { "from": "core-13", "to": "archive-21", "router": "core-router" },
+    { "from": "core-14", "to": "archive-22", "router": "core-router" },
+    { "from": "core-19", "to": "archive-27", "router": "core-router" }
+  ],
+  "mirror_proxies": {
+    "mirror-alpha": { "ip": "10.255.0.1", "connected_to": ["dmz-03","dmz-07"], "drift_pattern": "+5", "drift_interval": 20 },
+    "mirror-beta": { "ip": "10.255.0.2", "connected_to": ["dmz-04","dmz-08"], "drift_pattern": "+3", "drift_interval": 15 },
+    "mirror-gamma": { "ip": "10.255.0.3", "connected_to": ["core-17","archive-25"], "drift_pattern": "+7", "drift_interval": 18 },
+    "mirror-delta": { "ip": "10.255.0.4", "connected_to": ["core-18","archive-26"], "drift_pattern": "+11", "drift_interval": 22 }
+  },
+  "initial_infected": ["dmz-03"]
+}

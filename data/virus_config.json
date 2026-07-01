@@ -1,0 +1,36 @@
+{
+  "stages": {
+    "0": { "name": "Tutorial", "spread_interval": 0, "watchdog_active": false, "watchdog_restores_file": false, "mirrors_active": false, "drift_active": false, "crontab_persistence": false, "description": "Night shift briefing — learning the tools" },
+    "1": { "name": "First Bloom", "spread_interval": 420, "watchdog_active": false, "watchdog_restores_file": false, "mirrors_active": false, "drift_active": false, "crontab_persistence": false, "description": "Single infected node, basic kill+rm" },
+    "2": { "name": "Propagation", "spread_interval": 420, "watchdog_active": false, "watchdog_restores_file": false, "mirrors_active": false, "drift_active": false, "crontab_persistence": false, "description": "2-3 nodes infected, isolation becomes relevant" },
+    "3": { "name": "The Mirror", "spread_interval": 300, "watchdog_active": true, "watchdog_restores_file": false, "mirrors_active": true, "drift_active": true, "crontab_persistence": false, "description": "Watchdog appears, mirrors begin to twist routes" },
+    "4": { "name": "Deep Roots", "spread_interval": 300, "watchdog_active": true, "watchdog_restores_file": false, "mirrors_active": true, "drift_active": true, "crontab_persistence": true, "description": "Virus writes to crontab, mirrors loop" },
+    "5": { "name": "The Echo", "spread_interval": 180, "watchdog_active": true, "watchdog_restores_file": true, "mirrors_active": true, "drift_active": true, "crontab_persistence": true, "description": "Archive discovered, watchdog restores file, mutation active" },
+    "6": { "name": "Final Choice", "spread_interval": 180, "watchdog_active": true, "watchdog_restores_file": true, "mirrors_active": true, "drift_active": true, "crontab_persistence": true, "description": "Echo project revealed, ending decision" }
+  },
+  "virus": {
+    "process_name": "bloomd",
+    "initial_path": "/usr/lib/.bloomd",
+    "watchdog_name": "bloom_watchdog",
+    "watchdog_path": "/usr/sbin/.bloom_watchdog",
+    "cpu_usage": "10-15%",
+    "scan_interval": 15,
+    "mutations_stage_3": [".bloomd", "..libdb.so", ".cache_update"],
+    "mutations_stage_5": [".syslogd", "..kmod.so", "..bloomd_mut"],
+    "crontab_entry": "*/5 * * * * root /usr/lib/.bloomd",
+    "rc_local_entry": "/usr/lib/.bloomd &",
+    "hidden_dir": "/archive/echo/",
+    "shadow_copy_dir": "/tmp/.shadow/"
+  },
+  "usat": {
+    "initial": 100,
+    "dmz_penalty": 2,
+    "core_penalty": 5,
+    "archive_penalty": 3,
+    "complaint_interval": 30,
+    "auto_restore_threshold": 25,
+    "firing_threshold": 15,
+    "firing_timer": 300,
+    "management_warning_threshold": 40
+  }
+}

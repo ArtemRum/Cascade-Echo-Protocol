@@ -1,0 +1,121 @@
+{
+  "emails": {
+    "complaint_templates": [
+      "Subject: Slow response times\nFrom: user{id}@cascade.com\n\nHi, our team is experiencing significant delays accessing the {service}. This has been going on for the past hour. Can someone look into this?",
+      "Subject: Connection timeout\nFrom: client{id}@external.com\n\nWe're getting connection timeouts on our end. Our SLA is being violated. Please escalate urgently.",
+      "Subject: File access lag\nFrom: user{id}@cascade.com\n\nUploading files to the shared drive takes 3x longer than usual. Is there a problem with the storage servers?",
+      "Subject: Transaction delays\nFrom: partner{id}@partner.com\n\nOur API calls to your endpoints are timing out. This is affecting our production pipeline.",
+      "Subject: Service degradation\nFrom: admin{id}@cascade.com\n\nMonitoring shows increased latency on segment {segment}. Users are complaining. Please investigate ASAP."
+    ],
+    "plot": {
+      "stage_0_complete": {
+        "from": "assistant@cascade.com",
+        "subject": "Training complete — Stand by",
+        "body": "Good work, operator. You've passed the initial assessment. Stand by for assignment.\n\n— Training Assistant v2.1"
+      },
+      "stage_1_start": {
+        "from": "scheduler@cascade.com",
+        "subject": "Shift handoff — Night duty",
+        "body": "Operator,\n\nYour shift begins at 22:00. Reports of slow data access on DMZ segment. Please investigate.\n\nStandard protocols apply.\n\n— Cascade Ops Scheduler"
+      },
+      "stage_2_escalation": {
+        "from": "manager@cascade.com",
+        "subject": "Re: Performance issues — multiple nodes",
+        "body": "I'm seeing complaints from multiple clients now. What's going on? Get this under control.\n\n— T. Chen, NetSec Lead"
+      },
+      "stage_3_mirror": {
+        "from": "manager@cascade.com",
+        "subject": "Network anomalies detected",
+        "body": "Routing team noticed asymmetric paths in the DMZ segment. Are you messing with the route tables? Explain.\n\n— T. Chen, NetSec Lead"
+      },
+      "stage_4_crontab": {
+        "from": "secmon@cascade.com",
+        "subject": "ALERT: Unauthorized cron entries",
+        "body": "Security monitoring has detected unauthorized cron modifications on multiple nodes. Possible persistence mechanism. Investigate and revert.\n\n— Security Monitor (Automated)"
+      },
+      "stage_5_archive": {
+        "from": "audit@cascade.com",
+        "subject": "Archive segment access logged",
+        "body": "Unauthorized access attempt logged on archive segment. Origin: internal network. Cross-reference with active sessions.\n\n— Audit System (Automated)"
+      },
+      "stage_6_decision": {
+        "from": "unknown@darknet",
+        "subject": "You found it.",
+        "body": "You've seen the Echo project. Now you know what Cascade is doing.\n\nThe files in /archive/echo/ contain the proof. Help me expose them, or bury it forever.\n\nThe choice is yours.\n\n— Mirage"
+      },
+      "usat_warning_40": {
+        "from": "manager@cascade.com",
+        "subject": "WARNING: User satisfaction dropping",
+        "body": "Operator, user satisfaction is at {usat}%. This is below acceptable thresholds. I expect this to improve immediately.\n\n— T. Chen, NetSec Lead"
+      },
+      "usat_critical_25": {
+        "from": "management@cascade.com",
+        "subject": "CRITICAL: Emergency network restoration",
+        "body": "Attention! User satisfaction has dropped to critical levels. All isolated servers have been returned to the network to ensure business continuity.\n\nYour access to isolation controls is temporarily restricted.\n\n— Cascade Operations Management"
+      },
+      "usat_firing_15": {
+        "from": "hr@cascade.com",
+        "subject": "Notice of Termination Proceedings",
+        "body": "Operator,\n\nDue to gross negligence resulting in severe service degradation, termination proceedings have been initiated. You have 5 minutes to vacate the premises.\n\nYour access credentials will be revoked at the end of this shift.\n\n— Human Resources, Cascade Dynamics"
+      },
+      "ending_expose": {
+        "from": "mirage@darknet",
+        "subject": "The truth is out",
+        "body": "The data has been published. Cascade's Echo project is exposed.\n\nThank you, operator. You did the right thing.\n\n— Alexei Werner (Mirage)"
+      },
+      "ending_loyalty": {
+        "from": "ceo@cascade.com",
+        "subject": "Commendation",
+        "body": "Operator,\n\nYour handling of the situation did not go unnoticed. The threat has been neutralized, and your loyalty to Cascade is appreciated.\n\nA bonus has been added to your next paycheck.\n\n— D. Prescott, CEO"
+      },
+      "ending_shadow": {
+        "from": "unknown@darknet",
+        "subject": "...",
+        "body": "I see what you did. The data exists in two places now.\n\nNeither side knows about the third copy.\n\nInteresting choice.\n\n— ???"
+      },
+      "ending_firefighting": {
+        "from": "hr@cascade.com",
+        "subject": "Termination Confirmation",
+        "body": "Operator,\n\nYour employment with Cascade Dynamics is terminated effective immediately. Security will escort you out.\n\nThe virus was stopped. The company was not saved.\n\n— Human Resources, Cascade Dynamics"
+      }
+    }
+  },
+  "story_events": {
+    "stage_0": [
+      { "type": "assistant_message", "content": "Welcome to the night shift, operator. I'm your training assistant. Let's run through the basics.\n\nFirst, try connecting to a server: `ssh admin@10.0.1.1`" }
+    ],
+    "stage_1": [
+      { "type": "email", "email_id": "stage_1_start" },
+      { "type": "system_message", "content": "[SYSTEM] New shift started. Monitoring shows normal baseline on all segments." },
+      { "type": "assistant_message", "content": "I'm reading reports of slow data access on DMZ segment. Check the processes on dmz-01.\n\nTry: `ssh admin@10.0.1.1` then `top` or `ps aux` to see what's running." }
+    ],
+    "stage_1_first_infection": [
+      { "type": "system_message", "content": "[ALERT] Unknown process 'bloomd' detected on dmz-03 (10.0.1.3) — CPU load 12%." },
+      { "type": "assistant_message", "content": "That's not a standard process. Investigate it. Use `ps aux | grep bloomd` to find the PID, then `kill -9 <PID>`.\n\nAlso search for suspicious files with `find / -name \"*.bloomd*\" -type f 2>/dev/null`" }
+    ],
+    "stage_2": [
+      { "type": "system_message", "content": "[ALERT] Bloomd detected on multiple DMZ nodes. Possible propagation in progress." },
+      { "type": "email", "email_id": "stage_2_escalation" },
+      { "type": "assistant_message", "content": "The virus is spreading. You can isolate nodes to contain it: connect to the segment router and use `ifconfig eth0 down`.\n\nBut be careful — each isolation reduces user satisfaction (USAT). Check USAT in the status bar." }
+    ],
+    "stage_3": [
+      { "type": "system_message", "content": "[ALERT] Watchdog process detected. Virus recovery mechanism active." },
+      { "type": "email", "email_id": "stage_3_mirror" },
+      { "type": "assistant_message", "content": "A watchdog is restarting the virus. Use `ps aux | grep watchdog` to find it, then kill it BEFORE removing the virus file.\n\nAlso — network routes are behaving oddly. Try `traceroute` to trace the path." }
+    ],
+    "stage_4": [
+      { "type": "system_message", "content": "[ALERT] Crontab modifications detected on infected nodes. Virus achieving persistence." },
+      { "type": "email", "email_id": "stage_4_crontab" },
+      { "type": "assistant_message", "content": "The virus is writing to crontab. Check `/etc/crontab` on infected nodes and remove the malicious entries.\n\nAlso look for entries in `/etc/rc.local`." }
+    ],
+    "stage_5": [
+      { "type": "system_message", "content": "[ALERT] Unknown directory accessed on archive segment. Cross-referencing access logs." },
+      { "type": "email", "email_id": "stage_5_archive" },
+      { "type": "system_message", "content": "[DISCOVERY] Hidden project directory found: /archive/echo/ on core-14" }
+    ],
+    "stage_6": [
+      { "type": "email", "email_id": "stage_6_decision" },
+      { "type": "system_message", "content": "[SYSTEM] Echo project files located at /archive/echo/ on core-14. Contents: project_echo.pdf, journal.txt, client_data/" }
+    ]
+  }
+}
