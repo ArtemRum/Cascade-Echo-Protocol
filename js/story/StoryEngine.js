@@ -1,11 +1,12 @@
 class StoryEngine {
-  constructor(storyData, networkGraph, virus, usatManager, emailClient, mirrorRouter) {
+  constructor(storyData, networkGraph, virus, usatManager, emailClient, mirrorRouter, watchdog) {
     this.data = storyData;
     this.network = networkGraph;
     this.virus = virus;
     this.usat = usatManager;
     this.email = emailClient;
     this.mirror = mirrorRouter;
+    this.watchdog = watchdog;
     this.currentStage = 0;
     this.completedStages = [];
     this.flags = {};
@@ -24,6 +25,7 @@ class StoryEngine {
     if (this.virus.enabled === false && stage > 0) {
       this.virus.start();
     }
+    this.watchdog.setStage(stage);
     if (stage >= 3 && this.mirror) {
       this.mirror.startDrift();
     }
@@ -82,6 +84,9 @@ class StoryEngine {
     const totalNodes = Object.keys(this.network.nodes).filter(n => !this.network.nodes[n].isMirror).length;
     const isolatedCount = this.network.getIsolatedNodes().length;
 
+    if (this.getFlag('ending_virus_wins')) return 'virus_wins';
+    if (this.getFlag('ending_beat_virus')) return 'beat_virus';
+
     if (this.currentStage >= 6) {
       if (this.getFlag('ending_expose')) return 'expose';
       if (this.getFlag('ending_loyalty')) return 'loyalty';
@@ -112,8 +117,10 @@ class StoryEngine {
     return this.ending !== null;
   }
 
-  getEndingText() {
+  getEndingText(type) {
     const endings = {
+      'beat_virus': '=== ENDING: VICTORY ===\n\nYou eliminated the watchdog, resolved the mirror routes, and contained the bloomd outbreak. Cascade\'s security team took over the cleanup. You received a commendation and a bonus.\n\nThe network is stable. The virus is gone. But what was it protecting? What was hidden in the archive?\n\nSome questions never get answered. You did your job. That\'s enough.\n\nThanks for playing Cascade: Echo Protocol.',
+      'virus_wins': '=== ENDING: COLLAPSE ===\n\nThe bloomd virus spread to every node in the network. Cascade\'s infrastructure collapsed. Clients fled. The company entered emergency receivership.\n\nYou watched the monitors turn red, one by one, until there was nothing left to save.\n\nThe network died. So did Cascade Dynamics.\n\nThanks for playing Cascade: Echo Protocol.',
       'expose': '=== ENDING: EXPOSURE ===\n\nYou copied the encryption keys to Mirage\'s directory and disabled archive protection. Within hours, the Echo project data was public. Cascade Dynamics faced international investigation. Alexei Werner was vindicated. You were fired — but you sleep well at night.\n\nSome mirrors can\'t be unmade. But the truth can finally be seen.\n\nThanks for playing Cascade: Echo Protocol.',
       'loyalty': '=== ENDING: LOYALTY ===\n\nYou deleted every trace of the Echo project. The files, the logs, the backups — all gone. Cascade Dynamics continued operations as if nothing happened. You received a promotion and a bonus.\n\nBut sometimes, late at night, you wonder what was in those files.\n\nThe mirror showed you the truth. You looked away.\n\nThanks for playing Cascade: Echo Protocol.',
       'shadow': '=== ENDING: SHADOW ===\n\nYou created a third copy in /tmp/.shadow. Neither Mirage nor Cascade knows it exists. The power of knowledge, held in reserve.\n\nYou walk a narrow path between light and dark. The mirror reflects a ghost.\n\nThanks for playing Cascade: Echo Protocol.',

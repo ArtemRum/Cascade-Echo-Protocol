@@ -43,6 +43,16 @@
         "subject": "You found it.",
         "body": "You've seen the Echo project. Now you know what Cascade is doing.\n\nThe files in /archive/echo/ contain the proof. Help me expose them, or bury it forever.\n\nThe choice is yours.\n\n— Mirage"
       },
+      "ending_beat_virus": {
+        "from": "manager@cascade.com",
+        "subject": "Excellent work",
+        "body": "Operator,\n\nI've reviewed the incident report. You identified the threat, neutralized the watchdog, and stabilized the network routes. The outbreak has been contained.\n\nCascade's security team will handle the remaining cleanup. Take the rest of the night off.\n\n— T. Chen, NetSec Lead"
+      },
+      "ending_virus_wins": {
+        "from": "ceo@cascade.com",
+        "subject": "It's over",
+        "body": "Operator,\n\nThe network has been fully compromised. We're shutting down all systems effective immediately.\n\nYou are relieved of duty. This is not your fault — but someone will have to answer for it.\n\n— D. Prescott, CEO"
+      },
       "usat_warning_40": {
         "from": "manager@cascade.com",
         "subject": "WARNING: User satisfaction dropping",

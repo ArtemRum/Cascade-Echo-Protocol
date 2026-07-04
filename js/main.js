@@ -15,7 +15,7 @@ class Game {
     this.systemMessages = [];
     this.statusBar = null;
     this.statusInterval = null;
-    this.bloomInterval = null;
+    this.endingCheckInterval = null;
     this.gameTime = 0;
     this.gameTick = null;
     this.running = false;
@@ -59,6 +59,7 @@ class Game {
             <div class="login-user-item" data-user="${u.username}">
               <span>${u.username} ${u.hasSave ? '●' : '○'}</span>
               <span class="save-status">${u.hasSave ? 'save found' : 'new'}</span>
+              <button class="login-delete-btn" data-user="${u.username}" title="delete account">&times;</button>
             </div>
           `).join('')}
         </div>` : ''}
@@ -113,9 +114,24 @@ class Game {
     userInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') passInput.focus(); });
 
     screen.querySelectorAll('.login-user-item').forEach(el => {
-      el.addEventListener('click', () => {
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.login-delete-btn')) return;
         userInput.value = el.dataset.user;
         passInput.focus();
+      });
+    });
+
+    screen.querySelectorAll('.login-delete-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const username = btn.dataset.user;
+        const delPass = prompt(`Enter access code for "${username}" to delete account:`);
+        if (!delPass) return;
+        if (this.auth.deleteUser(username, delPass)) {
+          this._renderLogin();
+        } else {
+          showError('Delete failed: wrong access code');
+        }
       });
     });
 
@@ -135,16 +151,18 @@ class Game {
       this.virusConfig = virusConfig;
 
       this.network = new NetworkGraph(topologyData);
-      this.virus = new Bloomd(this.network, virusConfig);
-      this.watchdog = new Watchdog(this.network, virusConfig);
+      const getFS = (name) => this.getFSForNode(name);
+      this.virus = new Bloomd(this.network, virusConfig, getFS);
+      this.watchdog = new Watchdog(this.network, virusConfig, this.virus);
       this.mirror = new MirrorRouter(this.network, virusConfig);
       this.usat = new USATManager(virusConfig);
       this.email = new EmailClient(storyData);
-      this.story = new StoryEngine(storyData, this.network, this.virus, this.usat, this.email, this.mirror);
-      this.puzzles = new PuzzleStages(this);
+      this.story = new StoryEngine(storyData, this.network, this.virus, this.usat, this.email, this.mirror, this.watchdog);
+      this.puzzles = new PuzzleStages(this.story, this.virus, this.network, this.mirror, this.email, this.filesystems);
 
       this._wireCallbacks(virusConfig);
       this._initFS(topologyData);
+      this.virus.setupInitialInfected();
       this._initUI();
       this.commandParser = new CommandParser(this);
 
@@ -167,14 +185,6 @@ class Game {
     this.virus.onSpread = (target) => {
       this.email.addComplaint(target, this.network.nodes[target]?.segment || 'unknown');
       this._autoSave();
-    };
-
-    this.virus.onBloomEffect = (target) => {
-      // trigger is available for when player investigates the node
-    };
-
-    this.watchdog.onWatchdogLog = (log) => {
-      // silently logged in memory, player can find via logs on node
     };
 
     this.usat.onAutoRestore = () => {
@@ -314,7 +324,7 @@ class Game {
       '',
     ];
     for (const line of msg) {
-      active.writeln('\x1b[32m' + line + '\x1b[0m');
+      active.writeln(Utils.ANSI.GREEN + line + Utils.ANSI.RESET);
     }
     setTimeout(() => {
       this._start();
@@ -324,22 +334,21 @@ class Game {
   _start() {
     if (this.running) return;
     this.running = true;
-    this.story.setStage(1);
     this.puzzles.advanceTo(1);
-    this.virus.start();
     this.watchdog.start();
 
     this.gameTick = setInterval(() => {
       this.gameTime++;
+      if (this.puzzles) this.puzzles.tick(1);
       this._updateStatusBar();
       if (this.gameTime % 10 === 0) {
         this._autoSave();
       }
     }, 1000);
 
-    this.bloomInterval = setInterval(() => {
+    this.endingCheckInterval = setInterval(() => {
       this._checkEndings();
-    }, 5000);
+    }, 3000);
   }
 
   getFSForNode(nodeName) {
@@ -358,7 +367,7 @@ class Game {
     this._flashStatus(msg);
     const activePanel = this.tabManager.getActivePanel();
     if (activePanel) {
-      activePanel.writeln('\x1b[31m' + msg + '\x1b[0m');
+      activePanel.writeln(Utils.ANSI.RED + msg + Utils.ANSI.RESET);
     }
   }
 
@@ -372,23 +381,23 @@ class Game {
         chars.map(c => c + ' '.repeat(Math.floor(Math.random() * 3))).join('');
       lines.push(line);
     }
-    const msg = `\x1b[35m[!] BLOOM DETECTED on ${target}\x1b[0m`;
+    const msg = `${Utils.ANSI.MAGENTA}[!] BLOOM DETECTED on ${target}${Utils.ANSI.RESET}`;
     activePanel.writeln(msg);
     for (const line of lines) {
-      activePanel.writeln('\x1b[35m' + line + '\x1b[0m');
+      activePanel.writeln(Utils.ANSI.MAGENTA + line + Utils.ANSI.RESET);
     }
   }
 
   _showAssistantMessage(msg) {
     const activePanel = this.tabManager.getActivePanel();
     if (!activePanel) return;
-    activePanel.writeln('\x1b[36m[ASSISTANT] ' + msg + '\x1b[0m');
+    activePanel.writeln(Utils.ANSI.CYAN + '[ASSISTANT] ' + msg + Utils.ANSI.RESET);
   }
 
   _showStatus(msg) {
     const activePanel = this.tabManager.getActivePanel();
     if (activePanel) {
-      activePanel.writeln('\x1b[33m' + msg + '\x1b[0m');
+      activePanel.writeln(Utils.ANSI.YELLOW + msg + Utils.ANSI.RESET);
     }
   }
 
@@ -405,8 +414,20 @@ class Game {
     }
   }
 
+  _initStatusBar() {
+    this._statusItems = {};
+    for (const key of ['time', 'stage', 'infected', 'isolated', 'usat', 'message']) {
+      const el = document.createElement('span');
+      el.className = 'status-item' + (key === 'message' ? ' status-message' : '');
+      this.statusBar.appendChild(el);
+      this._statusItems[key] = el;
+    }
+  }
+
   _updateStatusBar() {
     if (!this.statusBar) return;
+    if (!this._statusItems) this._initStatusBar();
+
     const usat = this.usat ? this.usat.score : 100;
     const barLen = 20;
     const filled = Math.round(usat / 100 * barLen);
@@ -416,16 +437,12 @@ class Game {
     const infectedCount = this.network ? this.network.getInfectedNodes().length : 0;
     const isolatedCount = this.network ? this.network.getIsolatedNodes().length : 0;
 
-    const time = new Date().toLocaleTimeString();
-    const stage = this.story ? this.story.currentStage : 0;
-
-    this.statusBar.innerHTML =
-      `<span class="status-item">${time}</span>` +
-      `<span class="status-item">Stage ${stage}</span>` +
-      `<span class="status-item">Infected: ${infectedCount}</span>` +
-      `<span class="status-item">Isolated: ${isolatedCount}</span>` +
-      `<span class="status-item" style="color:${usatColor}">USAT: ${bar} ${usat}%</span>` +
-      `<span class="status-item status-message"></span>`;
+    this._statusItems.time.textContent = new Date().toLocaleTimeString();
+    this._statusItems.stage.textContent = 'Stage ' + (this.story ? this.story.currentStage : 0);
+    this._statusItems.infected.textContent = 'Infected: ' + infectedCount;
+    this._statusItems.isolated.textContent = 'Isolated: ' + isolatedCount;
+    this._statusItems.usat.textContent = 'USAT: ' + bar + ' ' + usat + '%';
+    this._statusItems.usat.style.color = usatColor;
   }
 
   _startStatusUpdates() {
@@ -444,22 +461,22 @@ class Game {
   _showEnding(type) {
     this.running = false;
     if (this.gameTick) { clearInterval(this.gameTick); this.gameTick = null; }
-    if (this.bloomInterval) { clearInterval(this.bloomInterval); this.bloomInterval = null; }
+    if (this.endingCheckInterval) { clearInterval(this.endingCheckInterval); this.endingCheckInterval = null; }
     if (this.statusInterval) { clearInterval(this.statusInterval); this.statusInterval = null; }
     this.virus.stop();
     this.watchdog.stop();
     this.usat.destroy();
 
-    const text = this.story.getEndingText();
+    const text = this.story.getEndingText(type);
     const activePanel = this.tabManager.getActivePanel();
     if (activePanel) {
       activePanel.terminal.clear();
-      activePanel.writeln('\n\x1b[33m' + '='.repeat(60) + '\x1b[0m');
+      activePanel.writeln('\n' + Utils.ANSI.YELLOW + '='.repeat(60) + Utils.ANSI.RESET);
       for (const line of text.split('\n')) {
-        activePanel.writeln('\x1b[33m' + line + '\x1b[0m');
+        activePanel.writeln(Utils.ANSI.YELLOW + line + Utils.ANSI.RESET);
       }
-      activePanel.writeln('\x1b[33m' + '='.repeat(60) + '\x1b[0m');
-      activePanel.writeln('\n\x1b[32mShift over. Close tab or F5 to restart.\x1b[0m');
+      activePanel.writeln(Utils.ANSI.YELLOW + '='.repeat(60) + Utils.ANSI.RESET);
+      activePanel.writeln('\n' + Utils.ANSI.GREEN + 'Shift over. Close tab or F5 to restart.' + Utils.ANSI.RESET);
     }
     this.auth.saveGame(null);
   }
@@ -469,7 +486,7 @@ class Game {
       const data = this._serialize();
       this.auth.saveGame(data);
     } catch (e) {
-      // storage full or unavailable
+      console.warn('Auto-save failed:', e.message);
     }
   }
 
@@ -497,6 +514,7 @@ class Game {
     if (this.email) this.email.fromJSON(data.email || {});
     if (this.story) this.story.fromJSON(data.story || {});
     if (this.puzzles) this.puzzles.fromJSON(data.puzzles || {});
+    if (this.puzzles) this.puzzles.restore();
     this.gameTime = data.gameTime || 0;
   }
 }

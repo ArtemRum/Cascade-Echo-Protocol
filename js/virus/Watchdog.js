@@ -1,8 +1,9 @@
 class Watchdog {
-  constructor(networkGraph, config) {
+  constructor(networkGraph, config, bloomd) {
     this.network = networkGraph;
     this.config = config.virus || {};
     this.stageConfig = config.stages || {};
+    this.bloomd = bloomd;
     this.currentStage = 0;
     this.scanInterval = null;
     this.enabled = false;
@@ -47,11 +48,12 @@ class Watchdog {
       if (restoresFile) {
         if (!node.hasVirusFile) {
           node.hasVirusFile = true;
+          node.bloomdRunning = true;
+          if (this.bloomd) this.bloomd.createPhysicalFile(node.name);
           const log = `[WATCHDOG] Restored virus file on ${node.name}`;
           this.logs.push(log);
           if (this.onWatchdogLog) this.onWatchdogLog(log);
-        }
-        if (!node.bloomdRunning && node.hasVirusFile) {
+        } else if (!node.bloomdRunning) {
           node.bloomdRunning = true;
           const log = `[WATCHDOG] Restarted bloomd process on ${node.name}`;
           this.logs.push(log);

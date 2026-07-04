@@ -1,4 +1,54 @@
 class CommandParser {
+  static COMMAND_FILE_MAP = {
+    ls:        ['/bin/ls'],
+    ps:        ['/bin/ps'],
+    kill:      ['/bin/kill'],
+    rm:        ['/bin/rm'],
+    cp:        ['/bin/cp'],
+    mv:        ['/bin/mv'],
+    find:      ['/bin/find'],
+    grep:      ['/bin/grep'],
+    cat:       ['/bin/cat'],
+    chmod:     ['/bin/chmod'],
+    mkdir:     ['/bin/mkdir'],
+    touch:     ['/bin/touch'],
+    pwd:       ['/bin/pwd'],
+    df:        ['/bin/df'],
+    du:        ['/bin/du'],
+    sort:      ['/bin/sort'],
+    wc:        ['/bin/wc'],
+    head:      ['/bin/head'],
+    tail:      ['/bin/tail'],
+    md5sum:    ['/bin/md5sum'],
+    uname:     ['/bin/uname'],
+    ifconfig:  ['/sbin/ifconfig'],
+    iptables:  ['/sbin/iptables'],
+    route:     ['/sbin/route'],
+    traceroute:['/sbin/traceroute'],
+    ping:      ['/sbin/ping'],
+    ssh:       ['/usr/bin/ssh'],
+    scp:       ['/usr/bin/scp'],
+    crontab:   ['/etc/crontab'],
+    mail:      ['/usr/bin/mail'],
+  };
+
+  static CRITICAL_LIBS = {
+    '/usr/lib/libc.so': {
+      msg: 'bash: Segmentation fault (core dumped)',
+      breaks: ['ls', 'ps', 'kill', 'rm', 'cp', 'mv', 'find', 'grep', 'cat', 'chmod', 'mkdir', 'touch', 'pwd', 'df', 'du', 'head', 'tail', 'sort', 'wc', 'md5sum', 'uname', 'ifconfig', 'iptables', 'route', 'traceroute', 'ping', 'crontab', 'mail', 'ssh', 'scp'],
+    },
+    '/usr/lib/libssl.so': {
+      msg: 'ssh: error while loading shared libraries: libssl.so: cannot open shared object file',
+      breaks: ['ssh', 'scp'],
+    },
+    '/usr/lib/libpam.so': {
+      msg: 'ssh: PAM authentication failed: Critical error — check /var/log/auth.log',
+      breaks: ['ssh'],
+    },
+  };
+
+  static BUILTIN_CMDS = ['help', 'man', 'clear', 'history', 'cd', 'echo', 'hostname', 'whoami', 'date', 'exit', 'sudo', 'tab', 'topology'];
+
   constructor(game) {
     this.game = game;
     this.commands = {};
@@ -7,6 +57,18 @@ class CommandParser {
 
   get panel() {
     return this.game.tabManager ? this.game.tabManager.getActivePanel() : null;
+  }
+
+  _getPanel() {
+    return this.panel;
+  }
+
+  _withFS(fn) {
+    const p = this.panel;
+    if (!p) return '';
+    const fs = p.currentFS;
+    if (!fs) return 'No filesystem available.';
+    return fn(p, fs);
   }
 
   _registerBuiltins() {
@@ -146,13 +208,38 @@ class CommandParser {
     if (cmd === 'sudo' && args.length > 0) {
       const realCmd = args[0].toLowerCase();
       const realArgs = args.slice(1);
+      const err = this._checkCommandAvailable(realCmd);
+      if (err) return err;
       const handler = this.commands[realCmd];
       if (handler) return handler(realArgs, true);
       return `sudo: ${realCmd}: command not found`;
     }
+    const err = this._checkCommandAvailable(cmd);
+    if (err) return err;
     const handler = this.commands[cmd];
     if (handler) return handler(args);
     return `bash: ${cmd}: command not found`;
+  }
+
+  _checkCommandAvailable(cmd) {
+    if (CommandParser.BUILTIN_CMDS.includes(cmd)) return null;
+    const p = this.panel;
+    if (!p || !p.currentFS) return null;
+    const fs = p.currentFS;
+    for (const [libPath, info] of Object.entries(CommandParser.CRITICAL_LIBS)) {
+      if (info.breaks.includes(cmd) && !fs.exists(libPath)) {
+        return info.msg;
+      }
+    }
+    const required = CommandParser.COMMAND_FILE_MAP[cmd];
+    if (required) {
+      for (const filePath of required) {
+        if (!fs.exists(filePath)) {
+          return `bash: ${cmd}: command not found (${filePath} deleted)`;
+        }
+      }
+    }
+    return null;
   }
 
   autocomplete(input) {
@@ -197,216 +284,225 @@ class CommandParser {
   }
 
   _clear(args) {
-    const p = this.panel;
+    const p = this._getPanel();
     if (p) p.terminal.clear();
     return '';
   }
 
   _history(args) {
-    const p = this.panel;
+    const p = this._getPanel();
     if (!p) return '';
     return p.commandHistory.map((cmd, i) => `  ${i + 1}  ${cmd}`).join('\n');
   }
 
   _ls(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available. Connect to a node first.';
-    const path = args.find(a => !a.startsWith('-')) || p.cwd;
-    const long = args.includes('-l') || args.includes('-la');
-    const all = args.includes('-a') || args.includes('-la');
-    const targetPath = this._resolvePath(path, p);
-    const entries = fs.ls(targetPath);
-    if (!entries) return `ls: ${path}: No such directory`;
-    let filtered = all ? entries : entries.filter(e => !e.hidden);
-    if (filtered.length === 0) return '';
-    if (!long) {
-      return filtered.map(e => (e.hidden ? '.' : '') + e.name).join('  ');
-    }
-    return filtered.map(e => {
-      const perms = e.permissions || (e.type === 'dir' ? 'drwxr-xr-x' : '-rw-r--r--');
-      const size = String(e.size || 0).padStart(5);
-      return `${perms} 1 ${e.owner || 'root'} ${e.group || 'root'} ${size} ${e.name}`;
-    }).join('\n');
+    return this._withFS((p, fs) => {
+      const path = args.find(a => !a.startsWith('-')) || p.cwd;
+      const long = args.includes('-l') || args.includes('-la');
+      const all = args.includes('-a') || args.includes('-la');
+      const targetPath = this._resolvePath(path, p);
+      const entries = fs.ls(targetPath);
+      if (!entries) return `ls: ${path}: No such directory`;
+      let filtered = all ? entries : entries.filter(e => !e.hidden);
+      if (filtered.length === 0) return '';
+      if (!long) {
+        return filtered.map(e => (e.hidden ? '.' : '') + e.name).join('  ');
+      }
+      return filtered.map(e => {
+        const perms = e.permissions || (e.type === 'dir' ? 'drwxr-xr-x' : '-rw-r--r--');
+        const size = String(e.size || 0).padStart(5);
+        return `${perms} 1 ${e.owner || 'root'} ${e.group || 'root'} ${size} ${e.name}`;
+      }).join('\n');
+    });
   }
 
   _cd(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
-    const target = args[0] || '/';
-    const resolved = this._resolvePath(target, p);
-    if (!fs.isDir(resolved)) {
-      return `cd: ${target}: No such directory`;
-    }
-    p.cwd = resolved;
-    return '';
+    return this._withFS((p, fs) => {
+      const target = args[0] || '/';
+      const resolved = this._resolvePath(target, p);
+      if (!fs.isDir(resolved)) {
+        return `cd: ${target}: No such directory`;
+      }
+      p.cwd = resolved;
+      return '';
+    });
   }
 
   _pwd(args) {
-    const p = this.panel;
+    const p = this._getPanel();
     return p ? p.cwd : '/';
   }
 
   _cat(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
     if (args.length === 0) return 'Usage: cat <file>';
-    const path = this._resolvePath(args[0], p);
-    const content = fs.readFile(path);
-    if (content === null) return `cat: ${args[0]}: No such file`;
-    return content;
+    return this._withFS((p, fs) => {
+      const path = this._resolvePath(args[0], p);
+      const content = fs.readFile(path);
+      if (content === null) return `cat: ${args[0]}: No such file`;
+      if (this.game?.puzzles) this.game.puzzles.onFileRead(path);
+      return content;
+    });
   }
 
   _rm(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
     if (args.length === 0) return 'Usage: rm [-rf] <file|dir>';
-    const recursive = args.includes('-rf') || args.includes('-r') || args.includes('-f');
-    const targets = args.filter(a => !a.startsWith('-'));
-    const results = [];
-    for (const target of targets) {
-      const path = this._resolvePath(target, p);
-      if (!fs.exists(path)) {
-        results.push(`rm: ${target}: No such file or directory`);
-        continue;
-      }
-      if (fs.isDir(path) && !recursive) {
-        results.push(`rm: ${target}: Is a directory (use -rf)`);
-        continue;
-      }
-      const nodeName = p.connectedNode;
-      if (nodeName) {
-        const virus = this.game?.virus;
-        if (virus) {
-          virus.removeFile(nodeName);
+    return this._withFS((p, fs) => {
+      const recursive = args.includes('-rf') || args.includes('-r') || args.includes('-f');
+      const targets = args.filter(a => !a.startsWith('-'));
+      const results = [];
+      for (const target of targets) {
+        const path = this._resolvePath(target, p);
+        if (path === '/') {
+          results.push('rm: cannot remove root directory');
+          continue;
         }
+        if (!fs.exists(path)) {
+          results.push(`rm: ${target}: No such file or directory`);
+          continue;
+        }
+        if (fs.isDir(path) && !recursive) {
+          results.push(`rm: ${target}: Is a directory (use -rf)`);
+          continue;
+        }
+        const nodeName = p.connectedNode;
+        if (nodeName && this.game?.virus && this.game.virus.isVirusPath(path)) {
+          this.game.virus.removeFile(nodeName, path);
+        }
+        if (nodeName && this.game?.virus && path === '/etc/crontab') {
+          this.game.virus.cleanCrontab(nodeName);
+        }
+        if (this.game?.puzzles) this.game.puzzles.checkEchoAction(path, 'delete');
+        fs.rm(path);
+        results.push('');
       }
-      fs.rm(path);
-      results.push('');
-    }
-    return results.join('\n');
+      return results.join('\n');
+    });
   }
 
   _cp(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
     const filtered = args.filter(a => a !== '-r');
     if (filtered.length < 2) return 'Usage: cp [-r] <source> <dest>';
-    const src = this._resolvePath(filtered[0], p);
-    const dest = this._resolvePath(filtered[1], p);
-    if (!fs.exists(src)) return `cp: ${filtered[0]}: No such file or directory`;
-    if (fs.cp(src, dest)) return '';
-    return 'cp: copy failed';
+    return this._withFS((p, fs) => {
+      const src = this._resolvePath(filtered[0], p);
+      const dest = this._resolvePath(filtered[1], p);
+      if (!fs.exists(src)) return `cp: ${filtered[0]}: No such file or directory`;
+      if (fs.cp(src, dest)) {
+        if (this.game?.puzzles) this.game.puzzles.checkEchoAction(src, 'copy');
+        if (this.game?.puzzles) this.game.puzzles.checkEchoAction(dest, 'copy');
+        return '';
+      }
+      return 'cp: copy failed';
+    });
   }
 
   _mv(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
     if (args.length < 2) return 'Usage: mv <source> <dest>';
-    const src = this._resolvePath(args[0], p);
-    const dest = this._resolvePath(args[1], p);
-    if (!fs.exists(src)) return `mv: ${args[0]}: No such file or directory`;
-    if (fs.mv(src, dest)) return '';
-    return 'mv: move failed';
+    return this._withFS((p, fs) => {
+      const src = this._resolvePath(args[0], p);
+      const dest = this._resolvePath(args[1], p);
+      if (!fs.exists(src)) return `mv: ${args[0]}: No such file or directory`;
+      if (fs.mv(src, dest)) return '';
+      return 'mv: move failed';
+    });
   }
 
   _mkdir(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
     if (args.length === 0) return 'Usage: mkdir [-p] <dir>';
-    const parent = args.includes('-p');
-    const targets = args.filter(a => !a.startsWith('-'));
-    const results = [];
-    for (const target of targets) {
-      const path = this._resolvePath(target, p);
-      if (parent) {
-        const parts = path.split('/').filter(Boolean);
-        let current = '/';
-        for (const part of parts) {
-          current += part;
-          if (!fs.exists(current)) fs.mkdir(current);
-          current += '/';
+    return this._withFS((p, fs) => {
+      const parent = args.includes('-p');
+      const targets = args.filter(a => !a.startsWith('-'));
+      const results = [];
+      for (const target of targets) {
+        const path = this._resolvePath(target, p);
+        if (parent) {
+          const parts = path.split('/').filter(Boolean);
+          let current = '/';
+          for (const part of parts) {
+            current += part;
+            if (!fs.exists(current)) fs.mkdir(current);
+            current += '/';
+          }
+        } else {
+          if (fs.mkdir(path)) results.push('');
+          else results.push(`mkdir: ${target}: File exists`);
         }
-      } else {
-        if (fs.mkdir(path)) results.push('');
-        else results.push(`mkdir: ${target}: File exists`);
       }
-    }
-    return results.join('\n');
+      return results.join('\n');
+    });
   }
 
   _touch(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
     if (args.length === 0) return 'Usage: touch <file>';
-    const path = this._resolvePath(args[0], p);
-    if (fs.exists(path)) return '';
-    fs.writeFile(path, '');
-    return '';
+    return this._withFS((p, fs) => {
+      const path = this._resolvePath(args[0], p);
+      if (fs.exists(path)) return '';
+      fs.writeFile(path, '');
+      return '';
+    });
   }
 
   _chmod(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
     if (args.length < 2) return 'Usage: chmod <mode> <file>';
-    const mode = args[0];
-    const path = this._resolvePath(args[1], p);
-    if (!fs.exists(path)) return `chmod: ${args[1]}: No such file`;
-    if (fs.chmod(path, mode)) return '';
-    return 'chmod: failed';
+    return this._withFS((p, fs) => {
+      const mode = args[0];
+      const path = this._resolvePath(args[1], p);
+      if (!fs.exists(path)) return `chmod: ${args[1]}: No such file`;
+      if (fs.chmod(path, mode)) return '';
+      return 'chmod: failed';
+    });
   }
 
   _find(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
+    return this._withFS((p, fs) => {
     const nameIdx = args.indexOf('-name');
-    const pattern = nameIdx >= 0 ? args[nameIdx + 1] : (args[0] || '');
-    const searchPath = args.length > 0 && !args[0].startsWith('-') && nameIdx !== 0 ? this._resolvePath(args[0], p) : p.cwd;
+    let searchPath = p.cwd;
+    let pattern = '';
+    if (nameIdx >= 0) {
+      pattern = args[nameIdx + 1] || '';
+      const pathArgs = args.slice(0, nameIdx).filter(a => !a.startsWith('-'));
+      if (pathArgs.length > 0) searchPath = this._resolvePath(pathArgs[0], p);
+    } else {
+      const nonFlag = args.filter(a => !a.startsWith('-'));
+      if (nonFlag.length === 1) {
+        const arg = nonFlag[0];
+        if (arg === '/') {
+          pattern = '';
+          searchPath = '/';
+        } else if (arg === '.') {
+          pattern = '.';
+        } else {
+          pattern = arg;
+        }
+      } else if (nonFlag.length >= 2) {
+        searchPath = this._resolvePath(nonFlag[0], p);
+        pattern = nonFlag[1];
+      }
+    }
     const searchPattern = pattern.replace(/\*/g, '');
     const results = fs.find(searchPath, searchPattern);
     if (results.length === 0) return '';
     return results.map(r => r.path).join('\n');
+    });
   }
 
   _grep(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
     const pattern = args.find(a => !a.startsWith('-'));
-    const fileArg = args.filter(a => a !== pattern && !a.startsWith('-'))[0];
     if (!pattern) return 'Usage: grep <pattern> [file]';
-    if (fileArg) {
-      const path = this._resolvePath(fileArg, p);
-      const content = fs.readFile(path);
-      if (content === null) return `grep: ${fileArg}: No such file`;
-      const lines = content.split('\n').filter(l => l.includes(pattern));
-      return lines.join('\n');
-    }
-    return '';
+    return this._withFS((p, fs) => {
+      const fileArg = args.filter(a => a !== pattern && !a.startsWith('-'))[0];
+      if (fileArg) {
+        const path = this._resolvePath(fileArg, p);
+        const content = fs.readFile(path);
+        if (content === null) return `grep: ${fileArg}: No such file`;
+        const lines = content.split('\n').filter(l => l.includes(pattern));
+        return lines.join('\n');
+      }
+      return '';
+    });
   }
 
   _ps(args) {
-    const p = this.panel;
+    const p = this._getPanel();
     if (!p) return '';
     const nodeName = p.connectedNode;
     const network = this.game?.network;
@@ -435,7 +531,7 @@ class CommandParser {
   }
 
   _kill(args) {
-    const p = this.panel;
+    const p = this._getPanel();
     if (!p) return '';
     const nodeName = p.connectedNode;
     const virus = this.game?.virus;
@@ -447,6 +543,7 @@ class CommandParser {
     if (pid === 1425) {
       if (virus.killProcess(nodeName)) {
         this.game.addSystemMessage(`[KILL] Process ${pid} (bloomd) terminated on ${nodeName}`);
+        if (this.game?.puzzles) this.game.puzzles.onBloomdKilled();
         return `[1]     ${pid} terminated`;
       }
       return `kill: ${pid}: No such process`;
@@ -454,6 +551,8 @@ class CommandParser {
     if (pid === 1530) {
       if (virus.killWatchdog(nodeName)) {
         this.game.addSystemMessage(`[KILL] Watchdog process ${pid} terminated on ${nodeName}`);
+        if (this.game?.virus) this.game.virus.removeWatchdogFile(nodeName);
+        if (this.game?.puzzles) this.game.puzzles.onWatchdogKilled();
         return `[1]     ${pid} terminated`;
       }
       return `kill: ${pid}: No such process`;
@@ -462,7 +561,7 @@ class CommandParser {
   }
 
   _top(args) {
-    const p = this.panel;
+    const p = this._getPanel();
     if (!p) return '';
     const nodeName = p.connectedNode;
     const network = this.game?.network;
@@ -496,7 +595,7 @@ class CommandParser {
   }
 
   _ifconfig(args) {
-    const p = this.panel;
+    const p = this._getPanel();
     if (!p) return '';
     const nodeName = p.connectedNode;
     const network = this.game?.network;
@@ -512,6 +611,7 @@ class CommandParser {
       this.game.usat.modify(penalty);
       this.game.addSystemMessage(`[NET] ${nodeName} isolated from network. USAT -${Math.abs(penalty)}%`);
       this.game.email.addComplaint(nodeName, node.segment);
+      if (this.game?.puzzles) this.game.puzzles.onNodeIsolated();
       return `${nodeName}: eth0 DOWN`;
     }
     if (args[0] === 'eth0' && args[1] === 'up') {
@@ -585,6 +685,7 @@ class CommandParser {
           const node = this.game.network.nodes[name];
           if (node && (node.ip === gw || target.includes(node.ip))) {
             mirror.resolveMirror(name, args.join(' '));
+            if (this.game?.puzzles) this.game.puzzles.onRouteResolved();
             this.game.addSystemMessage(`[ROUTE] Static route added via ${gw} — mirror ${name} resolved.`);
             return `Route added to ${target} via ${gw}. Mirror pathway stabilized.`;
           }
@@ -651,19 +752,17 @@ class CommandParser {
   }
 
   _crontab(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
     if (args.length === 0) return 'Usage: crontab -e (edit) or crontab -l (list)';
-    if (args[0] === '-l') {
-      const content = fs.readFile('/etc/crontab');
-      return content || 'no crontab for admin';
-    }
-    if (args[0] === '-e') {
-      return 'crontab: editing not available in this terminal. Use: cat /etc/crontab to view.';
-    }
-    return 'crontab: invalid option';
+    return this._withFS((p, fs) => {
+      if (args[0] === '-l') {
+        const content = fs.readFile('/etc/crontab');
+        return content || 'no crontab for admin';
+      }
+      if (args[0] === '-e') {
+        return 'crontab: editing not available in this terminal. Use: cat /etc/crontab to view.';
+      }
+      return 'crontab: invalid option';
+    });
   }
 
   _mail(args) {
@@ -698,7 +797,7 @@ class CommandParser {
   }
 
   _ssh(args) {
-    const p = this.panel;
+    const p = this._getPanel();
     if (!p) return '';
     if (args.length === 0) return 'Usage: ssh <user>@<host>';
     const match = args[0].match(/(.+)@(.+)/);
@@ -719,11 +818,26 @@ class CommandParser {
     p.cwd = '/';
     p.sshUser = user;
     this.game.addSystemMessage(`[SSH] Connected to ${nodeName} as ${user}`);
+    if (this.game?.puzzles) this.game.puzzles.onSshConnected();
     return `\nWelcome to ${nodeName} (${node.ip})\n${node.segment.toUpperCase()} segment\nLinux CascadeOS 4.15.0 #1 SMP\n`;
   }
 
   _scp(args) {
-    return 'scp: not fully implemented. Use: ssh for remote access.';
+    if (args.length < 2) return 'Usage: scp <source> <user>@<host>:<dest>';
+    return this._withFS((p, fs) => {
+    const src = args[0];
+    const destMatch = args[1]?.match(/(.+)@(.+?):(.+)/);
+    if (!destMatch) {
+      const dest = this._resolvePath(args[1], p);
+      if (fs.cp(this._resolvePath(src, p), dest)) {
+        if (this.game?.puzzles) this.game.puzzles.checkEchoAction(this._resolvePath(src, p), 'copy');
+        return '';
+      }
+      return 'scp: copy failed';
+    }
+    // Remote destination — for now just show intent
+    return `scp: ${src} -> ${destMatch[2]}:${destMatch[3]}`;
+    });
   }
 
   _topology(args) {
@@ -733,12 +847,12 @@ class CommandParser {
   }
 
   _whoami(args) {
-    const p = this.panel;
+    const p = this._getPanel();
     return p ? p.sshUser : 'admin';
   }
 
   _hostname(args) {
-    const p = this.panel;
+    const p = this._getPanel();
     return p ? (p.connectedNode || 'localhost') : 'localhost';
   }
 
@@ -747,107 +861,83 @@ class CommandParser {
   _echo(args) { return args.join(' '); }
 
   _du(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
-    const path = args[0] ? this._resolvePath(args[0], p) : p.cwd;
-    if (!fs.exists(path)) return `du: ${args[0]}: No such file or directory`;
-    return `${fs.getSize(path)}\t${path}`;
+    return this._withFS((p, fs) => {
+      const path = args[0] ? this._resolvePath(args[0], p) : p.cwd;
+      if (!fs.exists(path)) return `du: ${args[0]}: No such file or directory`;
+      return `${fs.getSize(path)}\t${path}`;
+    });
   }
 
   _df(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
-    const total = 8388608;
-    const used = fs.getSize('/');
-    const avail = total - used;
-    return `Filesystem     1K-blocks    Used Available Use% Mounted on\n/dev/sda1        ${total} ${used} ${avail} ${Math.round(used/total*100)}% /`;
+    return this._withFS((p, fs) => {
+      const total = 8388608;
+      const used = fs.getSize('/');
+      const avail = total - used;
+      return `Filesystem     1K-blocks    Used Available Use% Mounted on\n/dev/sda1        ${total} ${used} ${avail} ${Math.round(used/total*100)}% /`;
+    });
   }
 
   _md5sum(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
     if (args.length === 0) return 'Usage: md5sum <file>';
-    const path = this._resolvePath(args[0], p);
-    const content = fs.readFile(path);
-    if (content === null) return `md5sum: ${args[0]}: No such file`;
-    const hash = this._simpleHash(content);
-    return `${hash}  ${args[0]}`;
-  }
-
-  _simpleHash(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return ('00000000' + Math.abs(hash).toString(16)).slice(-8).repeat(4);
+    return this._withFS((p, fs) => {
+      const path = this._resolvePath(args[0], p);
+      const content = fs.readFile(path);
+      if (content === null) return `md5sum: ${args[0]}: No such file`;
+      const hash = Utils.md5Fake(content);
+      return `${hash}  ${args[0]}`;
+    });
   }
 
   _head(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
     const nIdx = args.indexOf('-n');
     const lines = nIdx >= 0 ? parseInt(args[nIdx + 1]) || 10 : 10;
     const fileArg = args.find(a => !a.startsWith('-') && a !== String(lines));
     if (!fileArg) return 'Usage: head [-n <count>] <file>';
-    const path = this._resolvePath(fileArg, p);
-    const content = fs.readFile(path);
-    if (content === null) return `head: ${fileArg}: No such file`;
-    return content.split('\n').slice(0, lines).join('\n');
+    return this._withFS((p, fs) => {
+      const path = this._resolvePath(fileArg, p);
+      const content = fs.readFile(path);
+      if (content === null) return `head: ${fileArg}: No such file`;
+      return content.split('\n').slice(0, lines).join('\n');
+    });
   }
 
   _tail(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
     const nIdx = args.indexOf('-n');
     const lines = nIdx >= 0 ? parseInt(args[nIdx + 1]) || 10 : 10;
     const fileArg = args.find(a => !a.startsWith('-') && a !== String(lines));
     if (!fileArg) return 'Usage: tail [-n <count>] <file>';
-    const path = this._resolvePath(fileArg, p);
-    const content = fs.readFile(path);
-    if (content === null) return `tail: ${fileArg}: No such file`;
-    const allLines = content.split('\n');
-    return allLines.slice(Math.max(0, allLines.length - lines)).join('\n');
+    return this._withFS((p, fs) => {
+      const path = this._resolvePath(fileArg, p);
+      const content = fs.readFile(path);
+      if (content === null) return `tail: ${fileArg}: No such file`;
+      const allLines = content.split('\n');
+      return allLines.slice(Math.max(0, allLines.length - lines)).join('\n');
+    });
   }
 
   _sort(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
     const fileArg = args.find(a => !a.startsWith('-'));
     if (!fileArg) return 'Usage: sort [file]';
-    const path = this._resolvePath(fileArg, p);
-    const content = fs.readFile(path);
-    if (content === null) return `sort: ${fileArg}: No such file`;
-    return content.split('\n').sort().join('\n');
+    return this._withFS((p, fs) => {
+      const path = this._resolvePath(fileArg, p);
+      const content = fs.readFile(path);
+      if (content === null) return `sort: ${fileArg}: No such file`;
+      return content.split('\n').sort().join('\n');
+    });
   }
 
   _wc(args) {
-    const p = this.panel;
-    if (!p) return '';
-    const fs = p.currentFS;
-    if (!fs) return 'No filesystem available.';
     const fileArg = args.find(a => !a.startsWith('-'));
     if (!fileArg) return 'Usage: wc [file]';
-    const path = this._resolvePath(fileArg, p);
-    const content = fs.readFile(path);
-    if (content === null) return `wc: ${fileArg}: No such file`;
-    const lines = content.split('\n').length;
-    const words = content.split(/\s+/).filter(Boolean).length;
-    const chars = content.length;
-    return `${lines} ${words} ${chars} ${fileArg}`;
+    return this._withFS((p, fs) => {
+      const path = this._resolvePath(fileArg, p);
+      const content = fs.readFile(path);
+      if (content === null) return `wc: ${fileArg}: No such file`;
+      const lines = content.split('\n').length;
+      const words = content.split(/\s+/).filter(Boolean).length;
+      const chars = content.length;
+      return `${lines} ${words} ${chars} ${fileArg}`;
+    });
   }
 
   _uname(args) {
@@ -856,7 +946,7 @@ class CommandParser {
   }
 
   _exit(args) {
-    const p = this.panel;
+    const p = this._getPanel();
     if (!p) return '';
     if (p.connectedNode) {
       const nodeName = p.connectedNode;

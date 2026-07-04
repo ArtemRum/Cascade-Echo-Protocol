@@ -8,6 +8,7 @@ class NetworkGraph {
     this.initialInfected = data.initial_infected || [];
     this.nodeStates = {};
     this.connections = {};
+    this.everInfected = new Set(data.initial_infected || []);
 
     this._buildNodes(data);
     this._buildConnections(data);
@@ -84,6 +85,15 @@ class NetworkGraph {
     return Object.values(this.nodes).filter(n => n.infected && !n.isMirror);
   }
 
+  getCleanRatio() {
+    if (this.everInfected.size === 0) return 0;
+    let cleanCount = 0;
+    for (const name of this.everInfected) {
+      if (this.nodeStates[name] === 'clean') cleanCount++;
+    }
+    return cleanCount / this.everInfected.size;
+  }
+
   getIsolatedNodes() {
     return Object.values(this.nodes).filter(n => n.isolated);
   }
@@ -95,6 +105,7 @@ class NetworkGraph {
     node.bloomdRunning = true;
     node.hasVirusFile = true;
     this.nodeStates[name] = 'infected';
+    this.everInfected.add(name);
     return true;
   }
 
@@ -172,11 +183,14 @@ class NetworkGraph {
         routed: node.routed,
       };
     }
+    state.__everInfected = Array.from(this.everInfected);
     return state;
   }
 
   fromJSON(state) {
+    this.everInfected = new Set(state.__everInfected || []);
     for (const [name, saved] of Object.entries(state)) {
+      if (name === '__everInfected') continue;
       const node = this.nodes[name];
       if (node) {
         node.infected = saved.infected;

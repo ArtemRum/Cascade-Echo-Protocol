@@ -18,6 +18,7 @@ class MirrorRouter {
   }
 
   startDrift() {
+    this.stopDrift();
     for (const name of Object.keys(this.mirrorNodes)) {
       this._scheduleDrift(name);
     }

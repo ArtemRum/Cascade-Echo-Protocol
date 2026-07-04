@@ -100,12 +100,6 @@ class TerminalPanel {
       this.fitAddon.fit();
     }, 50);
 
-    this._resizeHandler = () => {
-      if (this.fitAddon) {
-        try { this.fitAddon.fit(); } catch(e) {}
-      }
-    };
-    window.addEventListener('resize', this._resizeHandler);
     this._writePrompt();
     this.container.appendChild(this.element);
   }
@@ -226,13 +220,12 @@ class TerminalPanel {
   setActive(active) {
     this.element.style.display = active ? 'block' : 'none';
     if (active) {
-      this.terminal.focus();
       setTimeout(() => {
         this.terminal.focus();
         if (this.fitAddon) {
           try { this.fitAddon.fit(); } catch(e) {}
         }
-      }, 100);
+      }, 50);
     }
   }
 
@@ -243,9 +236,6 @@ class TerminalPanel {
   }
 
   destroy() {
-    if (this._resizeHandler) {
-      window.removeEventListener('resize', this._resizeHandler);
-    }
     if (this.terminal) {
       this.terminal.dispose();
       this.terminal = null;
