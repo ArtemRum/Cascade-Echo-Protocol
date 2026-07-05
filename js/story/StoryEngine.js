@@ -33,33 +33,29 @@ class StoryEngine {
     this._fireStageEvents(stage);
   }
 
+  _dispatchEvent(event) {
+    if (event.type === 'system_message' && this.onSystemMessage) {
+      this.onSystemMessage(event.content);
+    } else if (event.type === 'assistant_message' && this.onAssistantMessage && this.assistantActive) {
+      this.onAssistantMessage(event.content);
+    } else if (event.type === 'email') {
+      this.email.addPlotEmail(event.email_id);
+    }
+  }
+
   _fireStageEvents(stage) {
     if (this.stageEventsFired[stage]) return;
     this.stageEventsFired[stage] = true;
     const events = this.data?.story_events?.['stage_' + stage] || [];
     for (const event of events) {
-      setTimeout(() => {
-        if (event.type === 'system_message' && this.onSystemMessage) {
-          this.onSystemMessage(event.content);
-        } else if (event.type === 'assistant_message' && this.onAssistantMessage && this.assistantActive) {
-          this.onAssistantMessage(event.content);
-        } else if (event.type === 'email') {
-          this.email.addPlotEmail(event.email_id);
-        }
-      }, 1000);
+      setTimeout(() => this._dispatchEvent(event), 1000);
     }
   }
 
   fireEvent(eventName) {
     const events = this.data?.story_events?.[eventName] || [];
     for (const event of events) {
-      if (event.type === 'system_message' && this.onSystemMessage) {
-        this.onSystemMessage(event.content);
-      } else if (event.type === 'assistant_message' && this.onAssistantMessage && this.assistantActive) {
-        this.onAssistantMessage(event.content);
-      } else if (event.type === 'email') {
-        this.email.addPlotEmail(event.email_id);
-      }
+      this._dispatchEvent(event);
     }
   }
 
@@ -119,7 +115,7 @@ class StoryEngine {
 
   getEndingText(type) {
     const endings = {
-      'beat_virus': '=== ENDING: VICTORY ===\n\nYou eliminated the watchdog, resolved the mirror routes, and contained the bloomd outbreak. Cascade\'s security team took over the cleanup. You received a commendation and a bonus.\n\nThe network is stable. The virus is gone. But what was it protecting? What was hidden in the archive?\n\nSome questions never get answered. You did your job. That\'s enough.\n\nThanks for playing Cascade: Echo Protocol.',
+      'beat_virus': '=== ENDING: VICTORY ===\n\nYou thought you\'d contained it — but the virus was smarter. It hid in the shadows, dormant, waiting. One clean node carried the seed of the outbreak, invisible to your scans.\n\nYou found it. You eradicated it. Every last trace.\n\nThe network is stable. The virus is gone. But what was it protecting? What was hidden in the archive?\n\nSome questions never get answered. You did your job. That\'s enough.\n\nThanks for playing Cascade: Echo Protocol.',
       'virus_wins': '=== ENDING: COLLAPSE ===\n\nThe bloomd virus spread to every node in the network. Cascade\'s infrastructure collapsed. Clients fled. The company entered emergency receivership.\n\nYou watched the monitors turn red, one by one, until there was nothing left to save.\n\nThe network died. So did Cascade Dynamics.\n\nThanks for playing Cascade: Echo Protocol.',
       'expose': '=== ENDING: EXPOSURE ===\n\nYou copied the encryption keys to Mirage\'s directory and disabled archive protection. Within hours, the Echo project data was public. Cascade Dynamics faced international investigation. Alexei Werner was vindicated. You were fired — but you sleep well at night.\n\nSome mirrors can\'t be unmade. But the truth can finally be seen.\n\nThanks for playing Cascade: Echo Protocol.',
       'loyalty': '=== ENDING: LOYALTY ===\n\nYou deleted every trace of the Echo project. The files, the logs, the backups — all gone. Cascade Dynamics continued operations as if nothing happened. You received a promotion and a bonus.\n\nBut sometimes, late at night, you wonder what was in those files.\n\nThe mirror showed you the truth. You looked away.\n\nThanks for playing Cascade: Echo Protocol.',

@@ -1,5 +1,5 @@
 class TerminalPanel {
-  constructor(container, game, tabManager, name) {
+  constructor(container, game, tabManager, name, username) {
     this.container = container;
     this.game = game;
     this.tabManager = tabManager;
@@ -8,12 +8,13 @@ class TerminalPanel {
     this.connectedNode = null;
     this.currentFS = null;
     this.sshUser = 'admin';
+    this.localUser = username || 'admin';
     this.commandHistory = [];
     this.historyIndex = -1;
     this.currentInput = '';
     this.terminal = null;
     this.fitAddon = null;
-    this.promptStr = 'admin@cascade:~$ ';
+    this.promptStr = this.localUser + '@cascade:~$ ';
     this.element = null;
     this._init();
   }
@@ -96,6 +97,13 @@ class TerminalPanel {
     this.terminal.onKey(this._onKey.bind(this));
     this.terminal.onResize(() => {});
 
+    this.element.addEventListener('mousedown', () => {
+      const idx = this.tabManager.panels.indexOf(this);
+      if (idx >= 0 && idx !== this.tabManager.activeIndex) {
+        this.tabManager.switchTo(idx);
+      }
+    });
+
     setTimeout(() => {
       this.fitAddon.fit();
     }, 50);
@@ -106,7 +114,7 @@ class TerminalPanel {
 
   _writePrompt() {
     const host = this.connectedNode || 'cascade';
-    const user = this.sshUser || 'admin';
+    const user = this.connectedNode ? this.sshUser : this.localUser;
     const dir = this.cwd === '/' ? '~' : this.cwd;
     this.promptStr = `${user}@${host}:${dir}$ `;
     this.terminal.write(this.promptStr);
@@ -219,6 +227,19 @@ class TerminalPanel {
 
   setActive(active) {
     this.element.style.display = active ? 'block' : 'none';
+    if (active) {
+      setTimeout(() => {
+        this.terminal.focus();
+        if (this.fitAddon) {
+          try { this.fitAddon.fit(); } catch(e) {}
+        }
+      }, 50);
+    }
+  }
+
+  setActiveSplit(active) {
+    this.element.style.display = 'block';
+    this.element.classList.toggle('active-panel', active);
     if (active) {
       setTimeout(() => {
         this.terminal.focus();

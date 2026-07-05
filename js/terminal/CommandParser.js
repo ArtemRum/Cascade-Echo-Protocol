@@ -47,6 +47,12 @@ class CommandParser {
     },
   };
 
+  static PIDS = {
+    BLOOMD: 1425,
+    WATCHDOG: 1530,
+    TUTORIAL: 9999,
+  };
+
   static BUILTIN_CMDS = ['help', 'man', 'clear', 'history', 'cd', 'echo', 'hostname', 'whoami', 'date', 'exit', 'sudo', 'tab', 'topology'];
 
   constructor(game) {
@@ -171,8 +177,8 @@ class CommandParser {
             + '  mail -r        read first unread message',
     ssh:      'ssh <user>@<host>       — Connect to remote server\n'
             + '  Examples:\n'
-            + '    ssh admin@10.0.1.1     connect to dmz-01\n'
-            + '    ssh admin@172.16.0.11  connect to core-11',
+            + '    ssh user@10.0.1.1      connect to dmz-01\n'
+            + '    ssh user@172.16.0.11   connect to core-11',
     scp:      'scp <src> <dest>        — Securely copy files between nodes',
     topology: 'topology                — Display ASCII network map\n'
             + '  Shows all nodes: [ ] clean, [X] infected, [#] isolated, {M} mirror',
@@ -191,13 +197,14 @@ class CommandParser {
     exit:     'exit                    — Disconnect from current node',
     sudo:     'sudo <command>          — Execute command with elevated privileges',
     tab:      'tab <action>            — Manage terminal tabs\n'
-            + '  new                    create new tab\n'
-            + '  close                  close current tab\n'
-            + '  next                   switch to next tab\n'
-            + '  prev                   switch to previous tab\n'
-            + '  list                   list all tabs\n'
-            + '  <n>                    switch to tab number n\n'
-            + '  name <name>            rename current tab',
+              + '  new                    create new tab\n'
+              + '  close                  close current tab\n'
+              + '  next                   switch to next tab\n'
+              + '  prev                   switch to previous tab\n'
+              + '  split                  toggle split screen mode\n'
+              + '  list                   list all tabs\n'
+              + '  <n>                    switch to tab number n\n'
+              + '  name <name>            rename current tab',
   };
 
   parse(input) {
@@ -242,17 +249,114 @@ class CommandParser {
     return null;
   }
 
+  _completeFilePath(partialPath, p) {
+    if (!p || !p.currentFS) return [];
+    
+    // Разбиваем путь на директорию и имя файла
+    const lastSlashIndex = partialPath.lastIndexOf('/');
+    let dirPath, fileNamePrefix;
+    
+    if (lastSlashIndex === -1) {
+      // Нет слеша - ищем в текущей директории
+      dirPath = p.cwd;
+      fileNamePrefix = partialPath;
+    } else {
+      // Есть слеш - извлекаем директорию и префикс имени
+      dirPath = this._resolvePath(partialPath.substring(0, lastSlashIndex), p);
+      fileNamePrefix = partialPath.substring(lastSlashIndex + 1);
+    }
+    
+    // Получаем все записи в директории
+    const entries = p.currentFS.ls(dirPath);
+    if (!entries) return [];
+    
+    // Фильтруем по префиксу
+    let matches = entries.filter(entry => 
+      entry.name.startsWith(fileNamePrefix)
+    );
+    
+    // Если имя начинается с точки, показываем скрытые файлы
+    // Если не начинается с точки, скрываем скрытые файлы
+    if (!fileNamePrefix.startsWith('.')) {
+      matches = matches.filter(entry => !entry.hidden);
+    }
+    
+    // Сортируем: сначала директории, потом файлы
+    matches.sort((a, b) => {
+      if (a.type === 'dir' && b.type !== 'dir') return -1;
+      if (a.type !== 'dir' && b.type === 'dir') return 1;
+      return a.name.localeCompare(b.name);
+    });
+    
+    return matches;
+  }
+
   autocomplete(input) {
     if (!input) return input;
     const parts = input.split(/\s+/);
+    const p = this._getPanel();
+    
+    // Проверяем, можно ли дополнить файлы
+    const lastPart = parts[parts.length - 1];
+    
+    if (p && p.currentFS) {
+      const fileMatches = this._completeFilePath(lastPart, p);
+      
+      if (fileMatches.length === 1) {
+        // Одно совпадение - заменяем последнюю часть
+        const newParts = [...parts];
+        newParts[newParts.length - 1] = fileMatches[0].name;
+        return newParts.join(' ') + (fileMatches[0].type === 'dir' ? '/' : ' ');
+      } else if (fileMatches.length > 1) {
+        // Множество совпадений
+        const commonPrefix = this._findCommonPrefix(fileMatches.map(m => m.name));
+        if (commonPrefix && commonPrefix.length > lastPart.length) {
+          // Есть общий префикс - дополняем им
+          const newParts = [...parts];
+          newParts[newParts.length - 1] = commonPrefix;
+          return newParts.join(' ');
+        } else {
+          // Нет общего префикса - показываем все варианты
+          const suggestions = fileMatches.map(m => 
+            (m.hidden ? '.' : '') + m.name + (m.type === 'dir' ? '/' : '')
+          ).join('  ');
+          
+          // Если только одна часть, показываем предложения на новой строке
+          if (parts.length === 1) {
+            return input + '\n' + suggestions;
+          } else {
+            return input + '\n' + suggestions;
+          }
+        }
+      }
+    }
+    
+    // Если не нашли файлы, пытаемся дополнить команды (только если одна часть)
     if (parts.length === 1) {
       const partial = parts[0].toLowerCase();
       const matches = Object.keys(this.commands).filter(c => c.startsWith(partial));
       if (matches.length === 1) return matches[0] + ' ';
       if (matches.length > 1) return matches.join('  ');
-      return input;
     }
+    
     return input;
+  }
+
+  _findCommonPrefix(strings) {
+    if (!strings || strings.length === 0) return '';
+    
+    // Находим самую короткую строку
+    const shortest = strings.reduce((a, b) => a.length <= b.length ? a : b);
+    
+    // Ищем общий префикс
+    for (let i = 0; i < shortest.length; i++) {
+      const char = shortest[i];
+      if (!strings.every(s => s[i] === char)) {
+        return shortest.substring(0, i);
+      }
+    }
+    
+    return shortest;
   }
 
   _help(args) {
@@ -372,6 +476,7 @@ class CommandParser {
           this.game.virus.cleanCrontab(nodeName);
         }
         if (this.game?.puzzles) this.game.puzzles.checkEchoAction(path, 'delete');
+        if (this.game?.puzzles) this.game.puzzles.onTutorialFileDeleted(path);
         fs.rm(path);
         results.push('');
       }
@@ -509,20 +614,26 @@ class CommandParser {
     if (!nodeName || !network) return 'Not connected to a node. Use ssh to connect.';
     const node = network.nodes[nodeName];
     if (!node) return 'Node not found.';
+    const sshdUser = this._getPanel()?.sshUser || 'admin';
     let output = 'PID  PPID  CPU%  MEM%  COMMAND\n';
     const processes = [
       { pid: 1, ppid: 0, cpu: 0, mem: 0.1, cmd: '/sbin/init' },
       { pid: 100, ppid: 1, cpu: 0.2, mem: 0.5, cmd: '/usr/sbin/sshd -D' },
-      { pid: 150, ppid: 100, cpu: 0.1, mem: 0.3, cmd: 'sshd: admin@pts/0' },
+      { pid: 150, ppid: 100, cpu: 0.1, mem: 0.3, cmd: `sshd: ${sshdUser}@pts/0` },
       { pid: 200, ppid: 1, cpu: 0.5, mem: 1.2, cmd: '/usr/sbin/rsyslogd' },
       { pid: 300, ppid: 1, cpu: 0.3, mem: 0.8, cmd: '/usr/sbin/cron' },
       { pid: 350, ppid: 1, cpu: 1.0, mem: 2.1, cmd: '/usr/sbin/apache2 -k start' },
     ];
+    const PID = CommandParser.PIDS;
     if (node.bloomdRunning) {
-      processes.push({ pid: 1425, ppid: 1, cpu: 12.1, mem: 3.2, cmd: '/usr/lib/.bloomd' });
+      processes.push({ pid: PID.BLOOMD, ppid: 1, cpu: 12.1, mem: 3.2, cmd: '/usr/lib/.bloomd' });
     }
     if (node.hasWatchdog) {
-      processes.push({ pid: 1530, ppid: 1, cpu: 0.5, mem: 0.1, cmd: '/usr/sbin/.bloom_watchdog' });
+      processes.push({ pid: PID.WATCHDOG, ppid: 1, cpu: 0.5, mem: 0.1, cmd: '/usr/sbin/.bloom_watchdog' });
+    }
+    if (nodeName === 'dmz-01' && this.game?.story?.currentStage === 0 &&
+        !this.game?.puzzles?.puzzleState?.tutorialProcessKilled) {
+      processes.push({ pid: PID.TUTORIAL, ppid: 1, cpu: 5.2, mem: 1.1, cmd: '/tmp/.test_virus_daemon' });
     }
     output += processes.map(p =>
       `${String(p.pid).padStart(5)} ${String(p.ppid).padStart(5)} ${String(p.cpu.toFixed(1)).padStart(5)} ${String(p.mem.toFixed(1)).padStart(5)}  ${p.cmd}`
@@ -540,7 +651,8 @@ class CommandParser {
     const pidArg = args.find(a => !a.startsWith('-'));
     if (!pidArg) return 'kill: missing operand';
     const pid = parseInt(pidArg);
-    if (pid === 1425) {
+    const PID = CommandParser.PIDS;
+    if (pid === PID.BLOOMD) {
       if (virus.killProcess(nodeName)) {
         this.game.addSystemMessage(`[KILL] Process ${pid} (bloomd) terminated on ${nodeName}`);
         if (this.game?.puzzles) this.game.puzzles.onBloomdKilled();
@@ -548,7 +660,7 @@ class CommandParser {
       }
       return `kill: ${pid}: No such process`;
     }
-    if (pid === 1530) {
+    if (pid === PID.WATCHDOG) {
       if (virus.killWatchdog(nodeName)) {
         this.game.addSystemMessage(`[KILL] Watchdog process ${pid} terminated on ${nodeName}`);
         if (this.game?.virus) this.game.virus.removeWatchdogFile(nodeName);
@@ -556,6 +668,11 @@ class CommandParser {
         return `[1]     ${pid} terminated`;
       }
       return `kill: ${pid}: No such process`;
+    }
+    if (pid === PID.TUTORIAL) {
+      if (this.game?.puzzles) this.game.puzzles.onTutorialProcessKilled();
+      this.game.addSystemMessage(`[KILL] Test process ${pid} terminated on ${nodeName}`);
+      return `[1]     ${pid} terminated`;
     }
     return `[1]     ${pid} terminated`;
   }
@@ -568,25 +685,29 @@ class CommandParser {
     if (!nodeName || !network) return 'Not connected to a node.';
     const node = network.nodes[nodeName];
     if (!node) return 'Node not found.';
-    let output = 'top - ' + new Date().toLocaleTimeString() + '  up 1 day, 3:42,  1 user,  load average: 0.12, 0.08, 0.05\n';
+    const clock = this.game?.gameClock;
+    const timeStr = clock ? clock.toLocaleTimeString() : new Date().toLocaleTimeString();
+    let output = 'top - ' + timeStr + '  up 1 day, 3:42,  1 user,  load average: 0.12, 0.08, 0.05\n';
     output += 'Tasks:  45 total,   1 running,  44 sleeping,   0 stopped,   0 zombie\n';
     output += '%Cpu(s):  3.2 us,  1.5 sy,  0.0 ni, 95.0 id,  0.3 wa,  0.0 hi,  0.0 si\n';
     const memTotal = 8192;
     const memUsed = 2340 + (node.bloomdRunning ? 256 : 0);
     output += `MiB Mem : ${memTotal} total,  ${memTotal - memUsed} free,  ${memUsed} used,  320 buff/cache\n`;
     output += '\n  PID  USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND\n';
+    const topSshdUser = this._getPanel()?.sshUser || 'admin';
     const procs = [
       [350, 'root', 20, 0, '256M', '128M', '32M', 'S', 1.0, 1.6, '0:15.23', 'apache2'],
       [200, 'syslog', 20, 0, '64M', '32M', '8M', 'S', 0.5, 0.4, '0:42.10', 'rsyslogd'],
       [100, 'root', 20, 0, '32M', '16M', '4M', 'S', 0.2, 0.2, '1:23.45', 'sshd'],
       [300, 'root', 20, 0, '16M', '8M', '2M', 'S', 0.3, 0.1, '0:05.67', 'cron'],
-      [150, 'root', 20, 0, '24M', '12M', '3M', 'S', 0.1, 0.15, '0:03.21', 'sshd: admin'],
+      [150, 'root', 20, 0, '24M', '12M', '3M', 'S', 0.1, 0.15, '0:03.21', `sshd: ${topSshdUser}`],
     ];
+    const PID = CommandParser.PIDS;
     if (node.bloomdRunning) {
-      procs.push([1425, 'root', 20, 0, '128M', '64M', '16M', 'S', 12.1, 3.2, '2:15.10', '.bloomd']);
+      procs.push([PID.BLOOMD, 'root', 20, 0, '128M', '64M', '16M', 'S', 12.1, 3.2, '2:15.10', '.bloomd']);
     }
     if (node.hasWatchdog) {
-      procs.push([1530, 'root', 20, 0, '16M', '8M', '2M', 'S', 0.5, 0.1, '0:00.45', '.bloom_watchdog']);
+      procs.push([PID.WATCHDOG, 'root', 20, 0, '16M', '8M', '2M', 'S', 0.5, 0.1, '0:00.45', '.bloom_watchdog']);
     }
     output += procs.map(p =>
       `${String(p[0]).padStart(5)} ${p[1].padEnd(8)} ${String(p[2]).padStart(2)} ${String(p[3]).padStart(2)} ${p[4].padStart(7)} ${p[5].padStart(7)} ${p[6].padStart(7)} ${p[7]} ${String(p[8]).padStart(5)} ${String(p[9]).padStart(5)} ${p[10].padStart(10)} ${p[11]}`
@@ -756,7 +877,8 @@ class CommandParser {
     return this._withFS((p, fs) => {
       if (args[0] === '-l') {
         const content = fs.readFile('/etc/crontab');
-        return content || 'no crontab for admin';
+        const sshdUser = p.sshUser || 'admin';
+        return content || 'no crontab for ' + sshdUser;
       }
       if (args[0] === '-e') {
         return 'crontab: editing not available in this terminal. Use: cat /etc/crontab to view.';
@@ -768,10 +890,15 @@ class CommandParser {
   _mail(args) {
     const email = this.game?.email;
     if (!email) return 'Mail system unavailable.';
+    const p = this._getPanel();
+    const server = p ? p.connectedNode : null;
+
     if (args.length === 0) {
-      const summary = email.getEmailSummary();
+      const summary = email.getEmailSummary(server);
       if (summary.length === 0) return 'No mail.';
-      let output = `Mailbox (${email.unreadCount} unread, ${summary.length} total):\n`;
+      const unread = email.getUnreadCount(server);
+      const label = server ? ` (for ${server})` : '';
+      let output = `Mailbox${label} (${unread} unread, ${summary.length} total):\n`;
       summary.forEach(e => {
         const marker = e.read ? ' ' : 'N';
         const idx = String(e.id).padStart(3);
@@ -787,7 +914,7 @@ class CommandParser {
         email.markRead(id);
         return `From: ${emailItem.from}\nSubject: ${emailItem.subject}\nDate: ${emailItem.timestamp}\n\n${emailItem.body}`;
       }
-      const unread = email.getUnread();
+      const unread = email.getUnread(server);
       if (unread.length === 0) return 'No unread messages.';
       const latest = unread[0];
       email.markRead(latest.id);
@@ -805,6 +932,9 @@ class CommandParser {
     const user = match[1];
     const host = match[2];
     if (!host || host === '') return 'ssh: invalid hostname';
+    if (user !== this.game?.auth?.currentUser) {
+      return 'ssh: Permission denied (user ' + user + ' not allowed)';
+    }
     const network = this.game?.network;
     if (!network) return 'Network offline.';
     const nodeName = Object.keys(network.nodes).find(k => network.nodes[k].ip === host || k === host);
@@ -818,6 +948,7 @@ class CommandParser {
     p.cwd = '/';
     p.sshUser = user;
     this.game.addSystemMessage(`[SSH] Connected to ${nodeName} as ${user}`);
+    if (this.game?.audio) this.game.audio.playConnect();
     if (this.game?.puzzles) this.game.puzzles.onSshConnected();
     return `\nWelcome to ${nodeName} (${node.ip})\n${node.segment.toUpperCase()} segment\nLinux CascadeOS 4.15.0 #1 SMP\n`;
   }
@@ -848,7 +979,8 @@ class CommandParser {
 
   _whoami(args) {
     const p = this._getPanel();
-    return p ? p.sshUser : 'admin';
+    if (p && p.connectedNode) return p.sshUser;
+    return this.game?.auth?.currentUser || 'admin';
   }
 
   _hostname(args) {
@@ -856,7 +988,10 @@ class CommandParser {
     return p ? (p.connectedNode || 'localhost') : 'localhost';
   }
 
-  _date(args) { return new Date().toString(); }
+  _date(args) {
+    const clock = this.game?.gameClock;
+    return clock ? clock.toString() : new Date().toString();
+  }
 
   _echo(args) { return args.join(' '); }
 
@@ -954,6 +1089,7 @@ class CommandParser {
       p.currentFS = null;
       p.cwd = '/';
       this.game.addSystemMessage(`[SSH] Disconnected from ${nodeName}`);
+      if (this.game?.audio) this.game.audio.playDisconnect();
       return 'logout\nConnection closed.';
     }
     return '';
@@ -999,6 +1135,9 @@ class CommandParser {
           out += `${marker} ${i + 1}. ${p.name}${host}\n`;
         });
         return out;
+      case 'split':
+        tm.toggleSplit();
+        return tm.isSplit ? 'Split mode enabled.' : 'Split mode disabled.';
       case 'name':
         if (args.length < 2) return 'Usage: tab name <new name>';
         const newName = args.slice(1).join(' ');
@@ -1018,21 +1157,128 @@ class CommandParser {
           tm.switchTo(n - 1);
           return `Switched to tab ${n}.`;
         }
-        return `tab: unknown action "${cmd}". Use: new, close, next, prev, list, name, <n>`;
+        return `tab: unknown action "${cmd}". Use: new, close, next, prev, split, list, name, <n>`;
       }
     }
   }
 
+  _normalizePath(path) {
+    if (!path) return '';
+    
+    // Обработка пустого пути
+    if (path === '') return '';
+    
+    // Удаление множественных слешей
+    let normalized = path.replace(/\/+/g, '/');
+    
+    // Обработка абсолютного пути
+    const isAbsolute = normalized.startsWith('/');
+    
+    // Разбиение на компоненты
+    const components = normalized.split('/').filter(c => c !== '');
+    
+    // Обработка . и ..
+    const result = [];
+    
+    for (const component of components) {
+      if (component === '.') {
+        // Текущая директория - пропускаем
+        continue;
+      } else if (component === '..') {
+        // Родительская директория
+        if (result.length > 0) {
+          // Можно подняться на уровень
+          result.pop();
+        } else if (isAbsolute) {
+          // Абсолютный путь выше корня - остаемся в корне
+          // Ничего не делаем, остаемся в корне
+        } else {
+          // Относительный путь выше корня - сохраняем
+          result.push('..');
+        }
+      } else {
+        // Обычный компонент
+        result.push(component);
+      }
+    }
+    
+    // Сборка пути
+    let finalPath = result.join('/');
+    
+    // Добавляем начальный слеш для абсолютных путей
+    if (isAbsolute) {
+      finalPath = '/' + finalPath;
+    }
+    
+    // Обработка специальных случаев
+    if (path === '/') return '/';
+    if (finalPath === '') {
+      return isAbsolute ? '/' : '.';
+    }
+    
+    // Сохраняем завершающий слеш для корневого пути
+    if (finalPath === '/') return '/';
+    
+    return finalPath;
+  }
+
   _resolvePath(target, p) {
     if (!target) return p ? p.cwd : '/';
-    if (target.startsWith('/')) return target;
-    if (target === '..') {
-      const parts = (p ? p.cwd : '/').replace(/\/$/, '').split('/').filter(Boolean);
-      parts.pop();
-      return '/' + parts.join('/');
+    
+    // Нормализуем целевой путь
+    let normalizedTarget = target;
+    
+    // Если путь абсолютный
+    if (target.startsWith('/')) {
+      normalizedTarget = this._normalizePath(target);
+      return normalizedTarget || '/';
     }
-    if (target === '.') return p ? p.cwd : '/';
+    
+    // Получаем CWD и проверяем, не является ли он файлом
     const cwd = p ? p.cwd : '/';
-    return (cwd === '/' ? '' : cwd) + '/' + target;
+    const isFile = p && p.currentFS && !p.currentFS.isDir(cwd);
+    
+    // Обработка специальных случаев
+    if (target === '..') {
+      // Для .. всегда возвращаем родительскую директорию
+      const parts = cwd.replace(/\/$/, '').split('/').filter(Boolean);
+      
+      if (parts.length === 0) {
+        // Уже в корне
+        return '/';
+      }
+      
+      if (isFile) {
+        // CWD - файл, удаляем имя файла чтобы получить родительскую директорию
+        parts.pop();
+      } else {
+        // CWD - директория, удаляем последний компонент
+        parts.pop();
+      }
+      
+      return '/' + parts.join('/') || '/';
+    }
+    
+    if (target === '.') {
+      // Для . если CWD - файл, возвращаем родительскую директорию
+      if (isFile) {
+        const parts = cwd.replace(/\/$/, '').split('/').filter(Boolean);
+        parts.pop(); // Удаляем имя файла
+        return '/' + parts.join('/') || '/';
+      }
+      return cwd;
+    }
+    
+    // Для относительных путей комбинируем с CWD
+    // Если CWD - файл, используем его родительскую директорию
+    let basePath = cwd;
+    if (isFile) {
+      const parts = cwd.replace(/\/$/, '').split('/').filter(Boolean);
+      parts.pop(); // Удаляем имя файла
+      basePath = '/' + parts.join('/') || '/';
+    }
+    
+    const combined = (basePath === '/' ? '' : basePath) + '/' + target;
+    return this._normalizePath(combined);
   }
 }

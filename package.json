@@ -1,0 +1,26 @@
+{
+  "name": "one-week",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest run",
+    "test:ui": "vitest --ui"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ArtemRum/Cascade-Echo-Protocol.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ArtemRum/Cascade-Echo-Protocol/issues"
+  },
+  "homepage": "https://github.com/ArtemRum/Cascade-Echo-Protocol#readme",
+  "devDependencies": {
+    "@vitest/ui": "^3.2.6",
+    "jsdom": "^25.0.1",
+    "vitest": "^3.2.6"
+  }
+}

@@ -121,9 +121,15 @@ class USATManager {
   }
 
   fromJSON(data) {
-    this.score = data.score || 100;
-    this.warningGiven40 = data.warningGiven40 || false;
-    this.warningGiven25 = data.warningGiven25 || false;
-    this.firingActive = data.firingActive || false;
+    this.score = data.score !== undefined ? data.score : 100;
+    this.warningGiven40 = !!data.warningGiven40;
+    this.warningGiven25 = !!data.warningGiven25;
+    this.firingActive = !!data.firingActive;
+    if (!this.complaintIntervalId) this._startComplaintTimer();
+    if (this.firingActive && !this.firingTimer) {
+      this.firingTimer = setTimeout(() => {
+        if (this.onFiringTimeout) this.onFiringTimeout();
+      }, this.firingTimerDuration);
+    }
   }
 }

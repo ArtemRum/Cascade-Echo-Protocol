@@ -1,6 +1,8 @@
 class EmailClient {
-  constructor(storyData) {
+  constructor(storyData, gameClock, username) {
     this.data = storyData;
+    this.clock = gameClock || null;
+    this.username = username || 'operator';
     this.inbox = [];
     this.unreadCount = 0;
     this.complaintIndex = 0;
@@ -8,16 +10,19 @@ class EmailClient {
   }
 
   addEmail(email) {
+    const now = this.clock ? this.clock.toISOString() : new Date().toISOString().substring(0, 19).replace('T', ' ');
     const msg = {
       id: this.nextId++,
       from: email.from || 'unknown@cascade.com',
       subject: email.subject || 'No subject',
       body: email.body || '',
       read: false,
-      timestamp: new Date().toISOString().substring(0, 19).replace('T', ' '),
+      timestamp: now,
+      server: email.server || null,
     };
     this.inbox.push(msg);
     this.unreadCount++;
+    if (this.onNewEmail) this.onNewEmail(msg);
     return msg;
   }
 
@@ -25,10 +30,14 @@ class EmailClient {
     const plotEmails = this.data?.emails?.plot || {};
     const emailData = plotEmails[emailId];
     if (!emailData) return false;
+    let body = emailData.body || '';
+    if (this.username) {
+      body = body.replace(/\{username\}/g, this.username);
+    }
     this.addEmail({
       from: emailData.from || 'system@cascade.com',
       subject: emailData.subject || 'Notification',
-      body: emailData.body || '',
+      body: body,
     });
     return true;
   }
@@ -46,6 +55,7 @@ class EmailClient {
       from: `user${Math.floor(Math.random() * 9000) + 1000}@cascade.com`,
       subject: template.split('\n')[0].replace('Subject: ', ''),
       body: body.split('\n').slice(1).join('\n').trim(),
+      server: nodeName,
     });
   }
 
@@ -61,8 +71,9 @@ class EmailClient {
     return this.inbox;
   }
 
-  getUnread() {
-    return this.inbox.filter(e => !e.read);
+  getUnread(serverName) {
+    if (!serverName) return this.inbox.filter(e => !e.read);
+    return this.inbox.filter(e => !e.read && (!e.server || e.server === serverName));
   }
 
   getById(id) {
@@ -86,8 +97,11 @@ class EmailClient {
     }
   }
 
-  getEmailSummary() {
-    return this.inbox.map(e => ({
+  getEmailSummary(serverName) {
+    const filtered = serverName
+      ? this.inbox.filter(e => !e.server || e.server === serverName)
+      : this.inbox;
+    return filtered.map(e => ({
       id: e.id,
       from: e.from,
       subject: e.subject,
@@ -96,18 +110,26 @@ class EmailClient {
     }));
   }
 
+  getUnreadCount(serverName) {
+    return serverName
+      ? this.inbox.filter(e => !e.read && (!e.server || e.server === serverName)).length
+      : this.unreadCount;
+  }
+
   toJSON() {
     return {
       inbox: this.inbox,
       complaintIndex: this.complaintIndex,
       nextId: this.nextId,
+      clock: this.clock ? this.clock.toJSON() : null,
     };
   }
 
   fromJSON(data) {
     this.inbox = data.inbox || [];
     this.complaintIndex = data.complaintIndex || 0;
-    this.nextId = data.nextId || this.inbox.length + 1;
+    this.nextId = data.nextId !== undefined ? data.nextId : this.inbox.length + 1;
     this.unreadCount = this.inbox.filter(e => !e.read).length;
+    if (data.clock && this.clock) this.clock.fromJSON(data.clock);
   }
 }

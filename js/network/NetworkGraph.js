@@ -26,6 +26,9 @@ class NetworkGraph {
         hasVirusFile: this.initialInfected.includes(id),
         crontabInfected: false,
         routed: false,
+        virusLag: 0,
+        virusLagMax: 0,
+        destroyed: false,
       };
       this.nodeStates[id] = this.initialInfected.includes(id) ? 'infected' : 'clean';
     }
@@ -57,6 +60,9 @@ class NetworkGraph {
         hasVirusFile: false,
         crontabInfected: false,
         routed: false,
+        virusLag: 0,
+        virusLagMax: 0,
+        destroyed: false,
         isMirror: true,
         driftPattern: proxy.drift_pattern || '+5',
         driftInterval: proxy.drift_interval || 20,
@@ -77,15 +83,35 @@ class NetworkGraph {
 
   getCleanNeighbors(name) {
     return (this.connections[name] || []).filter(n =>
-      this.nodes[n] && !this.nodes[n].infected && !this.nodes[n].isolated && !this.nodes[n].isMirror
+      this.nodes[n] && !this.nodes[n].infected && !this.nodes[n].isolated && !this.nodes[n].isMirror && !this.nodes[n].destroyed
     );
   }
 
   getInfectedNodes() {
-    return Object.values(this.nodes).filter(n => n.infected && !n.isMirror);
+    return Object.values(this.nodes).filter(n => n.infected && !n.isMirror && !n.destroyed);
   }
 
-  getCleanRatio() {
+  setVirusLagMax(name) {
+    const node = this.nodes[name];
+    if (!node) return;
+    const map = { dmz: 6, core: 15, archive: 9 };
+    node.virusLagMax = map[node.segment] || 6;
+    node.virusLag = 0;
+    node.destroyed = false;
+  }
+
+  incrementVirusLag(name) {
+    const node = this.nodes[name];
+    if (!node || !node.infected || node.destroyed) return 0;
+    node.virusLag = Math.min(node.virusLagMax || 6, node.virusLag + 1);
+    return node.virusLag;
+  }
+
+  getDestroyedNodes() {
+    return Object.values(this.nodes).filter(n => n.destroyed && !n.isMirror);
+  }
+
+  getContainedRatio() {
     if (this.everInfected.size === 0) return 0;
     let cleanCount = 0;
     for (const name of this.everInfected) {
@@ -100,12 +126,13 @@ class NetworkGraph {
 
   infectNode(name) {
     const node = this.nodes[name];
-    if (!node || node.isolated || node.isMirror) return false;
+    if (!node || node.isolated || node.isMirror || node.destroyed) return false;
     node.infected = true;
     node.bloomdRunning = true;
     node.hasVirusFile = true;
     this.nodeStates[name] = 'infected';
     this.everInfected.add(name);
+    this.setVirusLagMax(name);
     return true;
   }
 
@@ -124,7 +151,7 @@ class NetworkGraph {
   restoreAllIsolated() {
     const restored = [];
     for (const node of Object.values(this.nodes)) {
-      if (node.isolated) {
+      if (node.isolated && !node.destroyed) {
         node.isolated = false;
         this.nodeStates[node.name] = node.infected ? 'infected' : 'clean';
         restored.push(node.name);
@@ -141,6 +168,9 @@ class NetworkGraph {
     node.hasVirusFile = false;
     node.hasWatchdog = false;
     node.crontabInfected = false;
+    node.virusLag = 0;
+    node.virusLagMax = 0;
+    node.destroyed = false;
     if (!node.isolated) this.nodeStates[name] = 'clean';
     return true;
   }
@@ -165,7 +195,7 @@ class NetworkGraph {
   canSsh(from, to) {
     const targetNode = this.nodes[to];
     if (!targetNode) return false;
-    if (targetNode.isolated) return false;
+    if (targetNode.isolated || targetNode.destroyed) return false;
     if (this.nodes[from] && this.nodes[from].isolated) return false;
     return true;
   }
@@ -181,6 +211,9 @@ class NetworkGraph {
         hasVirusFile: node.hasVirusFile,
         crontabInfected: node.crontabInfected,
         routed: node.routed,
+        virusLag: node.virusLag,
+        virusLagMax: node.virusLagMax,
+        destroyed: node.destroyed,
       };
     }
     state.__everInfected = Array.from(this.everInfected);
@@ -200,7 +233,10 @@ class NetworkGraph {
         node.hasVirusFile = saved.hasVirusFile;
         node.crontabInfected = saved.crontabInfected;
         node.routed = saved.routed;
-        this.nodeStates[name] = saved.infected ? 'infected' : saved.isolated ? 'isolated' : 'clean';
+        node.virusLag = saved.virusLag || 0;
+        node.virusLagMax = saved.virusLagMax || 0;
+        node.destroyed = saved.destroyed || false;
+        this.nodeStates[name] = saved.destroyed ? 'destroyed' : saved.infected ? 'infected' : saved.isolated ? 'isolated' : 'clean';
       }
     }
   }
@@ -214,7 +250,8 @@ class NetworkGraph {
         if (!name) continue;
         const node = this.nodes[name];
         let symbol;
-        if (node.isolated) symbol = '[#]';
+        if (node.destroyed) symbol = '[D]';
+        else if (node.isolated) symbol = '[#]';
         else if (node.infected) symbol = '[X]';
         else symbol = '[ ]';
         output += `${symbol} ${name} (${node.ip})  `;
@@ -231,7 +268,7 @@ class NetworkGraph {
       output += '\n\n';
     }
 
-    output += '  Legend:  [ ] Clean  [X] Infected  [#] Isolated  {M} Mirror\n';
+    output += '  Legend:  [ ] Clean  [X] Infected  [#] Isolated  [D] Destroyed  {M} Mirror\n';
     return output;
   }
 }

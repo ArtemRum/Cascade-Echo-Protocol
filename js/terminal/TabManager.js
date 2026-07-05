@@ -7,6 +7,8 @@ class TabManager {
     this.tabCount = 0;
     this.tabBar = null;
     this.terminalContainer = null;
+    this.isSplit = false;
+    this.splitPanelIdx = -1;
     this._init();
   }
 
@@ -39,7 +41,7 @@ class TabManager {
       this.tabCount++;
       name = `term-${this.tabCount}`;
     }
-    const panel = new TerminalPanel(this.terminalContainer, this.game, this, name);
+    const panel = new TerminalPanel(this.terminalContainer, this.game, this, name, this.game?.auth?.currentUser);
     const tabEl = this._createTabElement(panel);
     panel._tabElement = tabEl;
     this.panels.push(panel);
@@ -118,12 +120,34 @@ class TabManager {
     this.activeIndex = index;
     for (let i = 0; i < this.panels.length; i++) {
       const active = i === index;
-      this.panels[i].setActive(active);
+      if (this.isSplit) {
+        this.panels[i].setActiveSplit(active);
+      } else {
+        this.panels[i].setActive(active);
+      }
       if (this.panels[i]._tabElement) {
         this.panels[i]._tabElement.classList.toggle('active', active);
       }
     }
     this.panels[index].focus();
+  }
+
+  toggleSplit() {
+    this.isSplit = !this.isSplit;
+    this.terminalContainer.classList.toggle('split-mode', this.isSplit);
+    if (this.isSplit) {
+      if (this.panels.length < 2) {
+        this.newTab('right');
+      }
+      for (let i = 0; i < this.panels.length; i++) {
+        this.panels[i].setActiveSplit(i === this.activeIndex);
+      }
+    } else {
+      for (let i = 0; i < this.panels.length; i++) {
+        this.panels[i].setActive(i === this.activeIndex);
+      }
+    }
+    setTimeout(() => this.resize(), 100);
   }
 
   nextTab() {

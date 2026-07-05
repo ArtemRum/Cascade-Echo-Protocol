@@ -24,9 +24,9 @@
   },
   "usat": {
     "initial": 100,
-    "dmz_penalty": 2,
-    "core_penalty": 5,
-    "archive_penalty": 3,
+    "dmz_penalty": 6,
+    "core_penalty": 15,
+    "archive_penalty": 9,
     "complaint_interval": 30,
     "auto_restore_threshold": 25,
     "firing_threshold": 15,

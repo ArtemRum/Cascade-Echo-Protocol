@@ -22,6 +22,7 @@ class Game {
     this.topologyData = null;
     this.storyData = null;
     this.virusConfig = null;
+    this._usatAccum = 0;
 
     this._renderLogin();
   }
@@ -140,28 +141,31 @@ class Game {
 
   async _startGame(savedData) {
     try {
+      const loadJSON = (url) => fetch(url).then(r => { if (!r.ok) throw new Error(`Failed to load ${url}: ${r.status}`); return r.json(); });
       const [topologyData, storyData, virusConfig] = await Promise.all([
-        fetch('data/network_topology.json').then(r => r.json()),
-        fetch('data/story_events.json').then(r => r.json()),
-        fetch('data/virus_config.json').then(r => r.json()),
+        loadJSON('data/network_topology.json'),
+        loadJSON('data/story_events.json'),
+        loadJSON('data/virus_config.json'),
       ]);
 
       this.topologyData = topologyData;
       this.storyData = storyData;
       this.virusConfig = virusConfig;
 
+      this.gameClock = new GameClock();
       this.network = new NetworkGraph(topologyData);
       const getFS = (name) => this.getFSForNode(name);
       this.virus = new Bloomd(this.network, virusConfig, getFS);
       this.watchdog = new Watchdog(this.network, virusConfig, this.virus);
       this.mirror = new MirrorRouter(this.network, virusConfig);
       this.usat = new USATManager(virusConfig);
-      this.email = new EmailClient(storyData);
+      this.email = new EmailClient(storyData, this.gameClock, this.auth.currentUser);
       this.story = new StoryEngine(storyData, this.network, this.virus, this.usat, this.email, this.mirror, this.watchdog);
-      this.puzzles = new PuzzleStages(this.story, this.virus, this.network, this.mirror, this.email, this.filesystems);
+      this.puzzles = new PuzzleStages(this.story, this.virus, this.network, this.mirror, this.email, this.filesystems, this.gameClock);
 
       this._wireCallbacks(virusConfig);
       this._initFS(topologyData);
+      this._setupTutorialFiles();
       this.virus.setupInitialInfected();
       this._initUI();
       this.commandParser = new CommandParser(this);
@@ -182,9 +186,25 @@ class Game {
   }
 
   _wireCallbacks(virusConfig) {
+    this.virus.onBloomEffect = (target) => {
+      if (this.effects) this.effects.bloomBurst();
+      if (this.audio) this.audio.playBloom();
+      this.addSystemMessage(`[BLOOM] Cascade signal detected on ${target}`);
+    };
+    this.virus.onBloomInterference = (nodeName, action) => {
+      if (this.effects) this.effects.interference();
+      if (this.audio) this.audio.playInterference();
+      this.addSystemMessage(`[VIRUS] Countermeasures active on ${nodeName}`);
+    };
     this.virus.onSpread = (target) => {
       this.email.addComplaint(target, this.network.nodes[target]?.segment || 'unknown');
       this._autoSave();
+    };
+
+    this.email.onNewEmail = (msg) => {
+      if (this.audio) this.audio.playEmail();
+      this._flashStatus('New mail: ' + msg.subject.substring(0, 40));
+      this._updateStatusBar();
     };
 
     this.usat.onAutoRestore = () => {
@@ -196,6 +216,7 @@ class Game {
     this.usat.onFiringStart = (duration) => {
       this.addSystemMessage('[!!!] WARNING: User satisfaction critically low. Termination proceedings initiated.');
       this.email.addPlotEmail('usat_firing_15');
+      if (this.audio) this.audio.playWarning();
     };
 
     this.usat.onFiringTimeout = () => {
@@ -204,7 +225,12 @@ class Game {
     };
 
     this.usat.onWarning40 = (score) => {
-      this.email.addPlotEmail('usat_warning_40');
+      const tpl = this.email.data?.emails?.plot?.usat_warning_40;
+      if (tpl) {
+        const body = tpl.body.replace('{usat}', String(score));
+        this.email.addEmail({ from: tpl.from, subject: tpl.subject, body });
+      }
+      if (this.audio) this.audio.playWarning();
     };
 
     this.usat.onComplaintTick = (score) => {
@@ -229,7 +255,7 @@ class Game {
   _initFS(topologyData) {
     for (const [name, node] of Object.entries(this.network.nodes)) {
       if (node.isMirror) continue;
-      const fsData = FileTypes.getStandardFS(name, node);
+      const fsData = FileTypes.getStandardFS(name, node, this.gameClock);
       this.filesystems[name] = VirtualFS.fromJSON(fsData);
     }
     this._setupEchoFiles();
@@ -273,6 +299,19 @@ class Game {
     }
   }
 
+  _setupTutorialFiles() {
+    const fs = this.filesystems['dmz-01'];
+    if (!fs) return;
+    fs.writeFile('/tmp/.test_virus',
+      'CASCADE TRAINING DRILL — TEST INDICATOR\n\n' +
+      'Simulated threat for calibration.\n' +
+      'Procedure: terminate process (PID 9999), then remove this file.\n\n' +
+      '— Training Assistant v2.1');
+    const log = fs.readFile('/var/log/syslog') || '';
+    fs.writeFile('/var/log/syslog',
+      log + '2026-07-05 22:01:00 dmz-01 [WARN] Unusual process detected: /tmp/.test_virus_daemon (PID 9999)\n');
+  }
+
   _initUI() {
     const app = document.getElementById('app');
     app.innerHTML = '';
@@ -299,6 +338,9 @@ class Game {
     container.appendChild(this.statusBar);
     app.appendChild(container);
 
+    this.effects = new CRTEffects(container).init();
+    this.audio = new AudioManager().init();
+    this.audio.startAmbient();
     this.tabManager = new TabManager(terminalWrapper, this);
     this._updateStatusBar();
     this._startStatusUpdates();
@@ -307,6 +349,7 @@ class Game {
   _startTutorial() {
     const active = this.tabManager.getActivePanel();
     if (!active) return;
+    if (this.story) this.story.fireEvent('stage_0');
     const msg = [
       '╔══════════════════════════════════════════════════╗',
       '║  CASCADE DYNAMICS — NETSEC TERMINAL v2.4        ║',
@@ -315,8 +358,8 @@ class Game {
       '',
       'Operator ' + this.auth.currentUser + ' online.',
       '',
-      'Users reporting slow data access on DMZ segment.',
-      'Investigate with:  ssh admin@<ip>',
+      'Training drill active — test signal on dmz-01.',
+      'Connect and eliminate it via ssh ' + this.auth.currentUser + '@10.0.1.1',
       '',
       'Check complaints:  mail',
       'View network:      topology',
@@ -334,15 +377,18 @@ class Game {
   _start() {
     if (this.running) return;
     this.running = true;
-    this.puzzles.advanceTo(1);
     this.watchdog.start();
 
     this.gameTick = setInterval(() => {
       this.gameTime++;
+      if (this.gameClock) this.gameClock.tick(1);
       if (this.puzzles) this.puzzles.tick(1);
       this._updateStatusBar();
       if (this.gameTime % 10 === 0) {
         this._autoSave();
+      }
+      if (this.gameTime % 30 === 0) {
+        this._processInfectionLag();
       }
     }, 1000);
 
@@ -363,7 +409,7 @@ class Game {
   }
 
   addSystemMessage(msg) {
-    this.systemMessages.push({ time: Date.now(), text: msg });
+    this.systemMessages.push({ time: this.gameClock ? this.gameClock.getTime() : Date.now(), text: msg });
     this._flashStatus(msg);
     const activePanel = this.tabManager.getActivePanel();
     if (activePanel) {
@@ -371,27 +417,35 @@ class Game {
     }
   }
 
-  _triggerBloomEffect(target) {
-    const activePanel = this.tabManager.getActivePanel();
-    if (!activePanel) return;
-    const chars = ['*', '.', '+', '*', '.', '+'];
-    const lines = [];
-    for (let i = 0; i < 3; i++) {
-      const line = '  '.repeat(Math.floor(Math.random() * 5)) +
-        chars.map(c => c + ' '.repeat(Math.floor(Math.random() * 3))).join('');
-      lines.push(line);
+  _processInfectionLag() {
+    if (!this.network || !this.usat) return;
+    const infected = this.network.getInfectedNodes();
+    const stageMultipliers = { 0: 0, 1: 0.25, 2: 0.25, 3: 0.5, 4: 0.75, 5: 1, 6: 1 };
+    const mult = stageMultipliers[this.story?.currentStage] ?? 0.25;
+    let liveCount = 0;
+    for (const node of infected) {
+      if (node.destroyed || node.isMirror) continue;
+      liveCount++;
+      this.network.incrementVirusLag(node.name);
+      if (node.virusLag >= (node.virusLagMax || 6) && !node.destroyed) {
+        const hasOther = infected.some(n => n.name !== node.name && !n.destroyed);
+        if (!hasOther) continue;
+        node.destroyed = true;
+        node.isolated = true;
+        node.bloomdRunning = false;
+        this.addSystemMessage(`[VIRUS] ${node.name} destroyed by bloomd overload.`);
+      }
     }
-    const msg = `${Utils.ANSI.MAGENTA}[!] BLOOM DETECTED on ${target}${Utils.ANSI.RESET}`;
-    activePanel.writeln(msg);
-    for (const line of lines) {
-      activePanel.writeln(Utils.ANSI.MAGENTA + line + Utils.ANSI.RESET);
+    this._usatAccum = (this._usatAccum || 0) + liveCount * mult;
+    while (this._usatAccum >= 1) {
+      this.usat.modify(-1);
+      this._usatAccum -= 1;
     }
-  }
-
-  _showAssistantMessage(msg) {
-    const activePanel = this.tabManager.getActivePanel();
-    if (!activePanel) return;
-    activePanel.writeln(Utils.ANSI.CYAN + '[ASSISTANT] ' + msg + Utils.ANSI.RESET);
+    const allNodes = Object.values(this.network.nodes).filter(n => !n.isMirror);
+    const destroyedCount = allNodes.filter(n => n.destroyed).length;
+    const total = allNodes.length || 1;
+    const tension = Math.min(1, (destroyedCount * 2 + liveCount) / total);
+    if (this.audio) this.audio.setAmbientTension(tension);
   }
 
   _showStatus(msg) {
@@ -416,7 +470,7 @@ class Game {
 
   _initStatusBar() {
     this._statusItems = {};
-    for (const key of ['time', 'stage', 'infected', 'isolated', 'usat', 'message']) {
+    for (const key of ['time', 'stage', 'infected', 'isolated', 'destroyed', 'mail', 'usat', 'message']) {
       const el = document.createElement('span');
       el.className = 'status-item' + (key === 'message' ? ' status-message' : '');
       this.statusBar.appendChild(el);
@@ -436,11 +490,17 @@ class Game {
 
     const infectedCount = this.network ? this.network.getInfectedNodes().length : 0;
     const isolatedCount = this.network ? this.network.getIsolatedNodes().length : 0;
+    const destroyedCount = this.network ? this.network.getDestroyedNodes().length : 0;
+    const mailCount = this.email ? this.email.unreadCount : 0;
 
-    this._statusItems.time.textContent = new Date().toLocaleTimeString();
+    this._statusItems.time.textContent = this.gameClock ? this.gameClock.toLocaleTimeString() : new Date().toLocaleTimeString();
     this._statusItems.stage.textContent = 'Stage ' + (this.story ? this.story.currentStage : 0);
     this._statusItems.infected.textContent = 'Infected: ' + infectedCount;
     this._statusItems.isolated.textContent = 'Isolated: ' + isolatedCount;
+    this._statusItems.destroyed.textContent = 'Lost: ' + destroyedCount;
+    this._statusItems.destroyed.style.color = destroyedCount > 0 ? '#ff00ff' : '#555555';
+    this._statusItems.mail.textContent = 'Mail: ' + mailCount;
+    this._statusItems.mail.style.color = mailCount > 0 ? '#ffff00' : '#555555';
     this._statusItems.usat.textContent = 'USAT: ' + bar + ' ' + usat + '%';
     this._statusItems.usat.style.color = usatColor;
   }
@@ -501,6 +561,7 @@ class Game {
       story: this.story ? this.story.toJSON() : {},
       puzzles: this.puzzles ? this.puzzles.toJSON() : {},
       gameTime: this.gameTime,
+      gameClock: this.gameClock ? this.gameClock.toJSON() : null,
     };
   }
 
@@ -516,6 +577,7 @@ class Game {
     if (this.puzzles) this.puzzles.fromJSON(data.puzzles || {});
     if (this.puzzles) this.puzzles.restore();
     this.gameTime = data.gameTime || 0;
+    if (data.gameClock && this.gameClock) this.gameClock.fromJSON(data.gameClock);
   }
 }
 

@@ -10,6 +10,7 @@ class Bloomd {
     this.mutationIndex = 0;
     this.onSpread = null;
     this.onBloomEffect = null;
+    this.onBloomInterference = null;
     this.enabled = false;
   }
 
@@ -104,6 +105,19 @@ class Bloomd {
     fs.writeFile(virusPath, Utils.ELF_BINARY);
   }
 
+  infectSilently(nodeName) {
+    const node = this.network.nodes[nodeName];
+    if (!node || node.isolated || node.isMirror || node.destroyed) return false;
+    node.infected = true;
+    node.bloomdRunning = true;
+    node.hasVirusFile = true;
+    this.network.nodeStates[nodeName] = 'infected';
+    this.network.everInfected.add(nodeName);
+    this.network.setVirusLagMax(nodeName);
+    this._setupVirusFiles(nodeName);
+    return true;
+  }
+
   setupInitialInfected() {
     for (const node of Object.values(this.network.nodes)) {
       if (node.infected && !node.isMirror) {
@@ -166,6 +180,7 @@ class Bloomd {
     if (node.bloomdRunning) {
       node.bloomdRunning = false;
       this._autoCleanNode(nodeName);
+      if (this.onBloomInterference) this.onBloomInterference(nodeName, 'kill');
       return true;
     }
     return false;
@@ -181,6 +196,7 @@ class Bloomd {
     }
     node.hasVirusFile = false;
     this._autoCleanNode(nodeName);
+    if (this.onBloomInterference) this.onBloomInterference(nodeName, 'rm');
     return true;
   }
 
@@ -201,6 +217,7 @@ class Bloomd {
     if (!node.hasWatchdog) return false;
     node.hasWatchdog = false;
     this._autoCleanNode(nodeName);
+    if (this.onBloomInterference) this.onBloomInterference(nodeName, 'kill');
     return true;
   }
 

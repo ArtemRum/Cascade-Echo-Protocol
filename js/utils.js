@@ -29,4 +29,24 @@ class Utils {
     }
     return ('00000000' + Math.abs(hash).toString(16)).slice(-8).repeat(4);
   }
+
+  static _audioCtx = null;
+
+  static beep(freq = 800, duration = 120) {
+    try {
+      if (!Utils._audioCtx) {
+        Utils._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      const osc = Utils._audioCtx.createOscillator();
+      const gain = Utils._audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(Utils._audioCtx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0.15, Utils._audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, Utils._audioCtx.currentTime + duration / 1000);
+      osc.start();
+      osc.stop(Utils._audioCtx.currentTime + duration / 1000);
+    } catch (_) {}
+  }
 }

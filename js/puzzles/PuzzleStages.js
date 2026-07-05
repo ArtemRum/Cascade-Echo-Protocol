@@ -1,11 +1,12 @@
 class PuzzleStages {
-  constructor(story, virus, network, mirror, email, filesystems) {
+  constructor(story, virus, network, mirror, email, filesystems, gameClock) {
     this.story = story;
     this.virus = virus;
     this.network = network;
     this.mirror = mirror;
     this.email = email;
     this.filesystems = filesystems;
+    this.clock = gameClock || null;
     this.stageTimers = {};
     this.puzzleState = {
       firstSshDone: false,
@@ -18,6 +19,9 @@ class PuzzleStages {
       keysExposed: false,
       echoDeleted: false,
       shadowCopyMade: false,
+      secretInfectionDone: false,
+      tutorialProcessKilled: false,
+      tutorialFileRemoved: false,
     };
     this.branchDecided = false;
   }
@@ -38,11 +42,12 @@ class PuzzleStages {
     const mirrorLog = '[WARN] Asymmetric route detected. Possible proxy manipulation.';
     const mirrorNodes = Object.values(this.network.mirrorProxies || {});
     const nodes = mirrorNodes.flatMap(p => p.connected_to || []);
+    const now = this.clock ? this.clock.toISOString() : new Date().toISOString();
     for (const name of nodes) {
       const fs = this.filesystems[name];
       if (fs) {
         const log = fs.readFile('/var/log/syslog') || '';
-        fs.writeFile('/var/log/syslog', log + `${new Date().toISOString()} ${name} ${mirrorLog}\n`);
+        fs.writeFile('/var/log/syslog', log + `${now} ${name} ${mirrorLog}\n`);
       }
     }
   }
@@ -71,12 +76,12 @@ class PuzzleStages {
 
   _isStageComplete(stage) {
     switch (stage) {
-      case 0: return this.stageTimers[0] >= 300;
+      case 0: return this.puzzleState.tutorialProcessKilled && this.puzzleState.tutorialFileRemoved;
       case 1: return this.stageTimers[1] >= 600;
-      case 2: return this.stageTimers[2] >= 1020 && this.network.getCleanRatio() > 0.3;
+      case 2: return this.stageTimers[2] >= 1020 && this.network.getContainedRatio() > 0.3;
       case 3: return this.puzzleState.echoDiscovered;
       case 4: return this.puzzleState.journalRead;
-      case 5: return this.stageTimers[5] >= 2;
+      case 5: return this.stageTimers[5] >= 30;
       default: return false;
     }
   }
@@ -85,19 +90,23 @@ class PuzzleStages {
     const next = this.story.currentStage + 1;
     if (next > 6) return;
     this.advanceTo(next);
-    this._fireEntryEmail(next);
   }
 
-  _fireEntryEmail(stage) {
-    const map = {
-      1: 'stage_1_start',
-      3: 'stage_3_mirror',
-      4: 'stage_4_crontab',
-      5: 'stage_5_archive',
-      6: 'stage_6_decision',
-    };
-    const id = map[stage];
-    if (id) this.email.addPlotEmail(id);
+  _triggerSecretInfection() {
+    const { network, virus } = this;
+    const clean = Object.values(network.nodes).filter(n => !n.infected && !n.isMirror && !n.isolated);
+    if (clean.length === 0) return;
+
+    const target = clean[Math.floor(Math.random() * clean.length)].name;
+    virus.infectSilently(target);
+
+    this.puzzleState.secretInfectionDone = true;
+    this.puzzleState.secretInfectedNode = target;
+
+    const next = this.story.currentStage + 1;
+    if (next <= 6) {
+      this._advance();
+    }
   }
 
   _checkBranchOutcomes() {
@@ -119,7 +128,12 @@ class PuzzleStages {
       return;
     }
 
-    if (this.puzzleState.watchdogKilled && this.puzzleState.mirrorsResolved >= 2) {
+    if (infectedCount === 0 && stage >= 1 && stage <= 3 && !this.puzzleState.secretInfectionDone) {
+      this._triggerSecretInfection();
+      return;
+    }
+
+    if (this.puzzleState.secretInfectionDone && infectedCount === 0 && stage >= 4) {
       story.setFlag('ending_beat_virus', true);
       this.branchDecided = true;
       return;
@@ -153,29 +167,36 @@ class PuzzleStages {
   }
 
   checkEchoAction(path, action) {
-    if (path.includes('/archive/echo') || path.includes('echo')) {
-      if (action === 'delete') {
-        if (path.includes('echo')) this.puzzleState.echoDeleted = true;
-      }
-      if (action === 'copy') {
-        if (path.includes('keys') || path.includes('encryption')) {
-          this.puzzleState.keysExposed = true;
-        }
-        if (path.includes('.shadow') || path.includes('shadow')) {
-          this.puzzleState.shadowCopyMade = true;
-        }
-      }
-      return true;
+    if (!path || !action) return false;
+
+    const isEchoPath = path === '/archive/echo' || path.startsWith('/archive/echo/');
+
+    if (action === 'delete' && isEchoPath) {
+      this.puzzleState.echoDeleted = true;
     }
-    return false;
+
+    if (action === 'copy') {
+      if (isEchoPath && (path.includes('keys') || path.includes('encryption'))) {
+        this.puzzleState.keysExposed = true;
+      }
+      if (path.includes('.shadow') || path.includes('/shadow')) {
+        this.puzzleState.shadowCopyMade = true;
+      }
+    }
+
+    return isEchoPath || path.includes('.shadow') || path.includes('/shadow');
   }
 
   onFileRead(path) {
-    if (path.includes('journal.txt') || path.includes('journal')) {
+    if (!path) return;
+    if (path.endsWith('journal.txt') || path.endsWith('/journal')) {
       this.puzzleState.journalRead = true;
     }
-    if (path.includes('archive/echo') || path.includes('/archive/echo/')) {
+    if (path.startsWith('/archive/echo/') || path.includes('/archive/echo/')) {
       this.puzzleState.echoDiscovered = true;
+    }
+    if (path.endsWith('.test_virus')) {
+      this.puzzleState.tutorialFileRead = true;
     }
   }
 
@@ -184,6 +205,10 @@ class PuzzleStages {
   onNodeIsolated() { this.puzzleState.nodeIsolated = true; }
   onRouteResolved() { this.puzzleState.mirrorsResolved++; }
   onWatchdogKilled() { this.puzzleState.watchdogKilled = true; }
+  onTutorialProcessKilled() { this.puzzleState.tutorialProcessKilled = true; }
+  onTutorialFileDeleted(path) {
+    if (path && path.endsWith('.test_virus')) this.puzzleState.tutorialFileRemoved = true;
+  }
 
   getClue(stage) {
     const clues = {

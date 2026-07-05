@@ -1,0 +1,146 @@
+#game-effects {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9999;
+  overflow: hidden;
+}
+
+#game-effects .crt-scanlines {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 1px,
+    rgba(0, 0, 0, 0.06) 1px,
+    rgba(0, 0, 0, 0.06) 2px
+  );
+}
+
+#game-effects .crt-scanlines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(255, 0, 0, 0.012) 3px,
+    rgba(0, 255, 0, 0.012) 4px,
+    rgba(0, 0, 255, 0.012) 5px,
+    transparent 5px,
+    transparent 6px
+  );
+  mix-blend-mode: screen;
+}
+
+#game-effects #noise-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.08s;
+  image-rendering: pixelated;
+}
+
+#game-effects #noise-canvas.active {
+  opacity: 0.12;
+}
+
+#game-effects .vhs-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+#game-effects .vhs-overlay.active {
+  opacity: 1;
+}
+
+#game-effects .vhs-bar {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(255, 255, 255, 0.12) 40%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0.12) 60%,
+    transparent 100%
+  );
+  animation: vhs-scroll 0.8s linear forwards;
+}
+
+#game-effects .glitch-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  background: rgba(255, 255, 255, 0.04);
+  opacity: 0;
+}
+
+#game-effects .glitch-flash.active {
+  animation: glitch-flash-anim 0.15s ease-out forwards;
+}
+
+@keyframes vhs-scroll {
+  0% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh);
+    opacity: 0;
+  }
+}
+
+@keyframes glitch-flash-anim {
+  0% { opacity: 0.6; }
+  100% { opacity: 0; }
+}
+
+@keyframes screen-shake {
+  0%, 100% { transform: translate(0, 0); }
+  8% { transform: translate(-3px, 1px); }
+  16% { transform: translate(2px, -2px); }
+  24% { transform: translate(-1px, 3px); }
+  32% { transform: translate(3px, -1px); }
+  40% { transform: translate(-2px, 2px); }
+  48% { transform: translate(1px, -3px); }
+  56% { transform: translate(-3px, -1px); }
+  64% { transform: translate(2px, 1px); }
+  72% { transform: translate(-1px, -2px); }
+  80% { transform: translate(4px, 0); }
+  88% { transform: translate(-2px, -1px); }
+}
+
+@keyframes glitch-horizontal {
+  0% { clip-path: inset(0); transform: translate(0); }
+  8% { clip-path: inset(30px 0 0 0); transform: translate(-4px, 0); }
+  16% { clip-path: inset(100px 0 60px 0); transform: translate(3px, 0); }
+  24% { clip-path: inset(10px 0 0 0); transform: translate(-2px, 0); }
+  32% { clip-path: inset(150px 0 50px 0); transform: translate(5px, 0); }
+  40% { clip-path: inset(60px 0 140px 0); transform: translate(-3px, 0); }
+  48% { clip-path: inset(200px 0 0 0); transform: translate(2px, 0); }
+  56% { clip-path: inset(80px 0 120px 0); transform: translate(-4px, 0); }
+  64% { clip-path: inset(0); transform: translate(0); }
+  100% { clip-path: inset(0); transform: translate(0); }
+}
+
+.game-container.screen-shake {
+  animation: screen-shake 0.35s ease-out;
+}
+
+.game-container.glitch-horizontal {
+  animation: glitch-horizontal 0.45s ease-out;
+}

@@ -1,6 +1,7 @@
 class FileTypes {
-  static getStandardFS(hostname, nodeData) {
+  static getStandardFS(hostname, nodeData, gameClock) {
     const ip = nodeData ? nodeData.ip : '10.0.0.1';
+    const now = gameClock ? gameClock.now() : new Date('2026-07-05T22:00:00');
     return {
       type: 'dir',
       children: {
@@ -22,6 +23,12 @@ class FileTypes {
           'pwd': { type: 'file', content: '', permissions: '-rwxr-xr-x', owner: 'root', group: 'root' },
           'df': { type: 'file', content: '', permissions: '-rwxr-xr-x', owner: 'root', group: 'root' },
           'du': { type: 'file', content: '', permissions: '-rwxr-xr-x', owner: 'root', group: 'root' },
+          'sort': { type: 'file', content: '', permissions: '-rwxr-xr-x', owner: 'root', group: 'root' },
+          'wc': { type: 'file', content: '', permissions: '-rwxr-xr-x', owner: 'root', group: 'root' },
+          'head': { type: 'file', content: '', permissions: '-rwxr-xr-x', owner: 'root', group: 'root' },
+          'tail': { type: 'file', content: '', permissions: '-rwxr-xr-x', owner: 'root', group: 'root' },
+          'md5sum': { type: 'file', content: '', permissions: '-rwxr-xr-x', owner: 'root', group: 'root' },
+          'uname': { type: 'file', content: '', permissions: '-rwxr-xr-x', owner: 'root', group: 'root' },
         }, permissions: 'drwxr-xr-x', owner: 'root', group: 'root' },
         'sbin': { type: 'dir', children: {
           'ifconfig': { type: 'file', content: '', permissions: '-rwxr-xr-x', owner: 'root', group: 'root' },
@@ -41,8 +48,8 @@ class FileTypes {
         }, permissions: 'drwxr-xr-x', owner: 'root', group: 'root' },
         'var': { type: 'dir', children: {
           'log': { type: 'dir', children: {
-            'syslog': { type: 'file', content: FileTypes._generateSyslog(hostname, ip), permissions: '-rw-r--r--', owner: 'admin', group: 'admin' },
-            'auth.log': { type: 'file', content: FileTypes._generateAuthLog(hostname), permissions: '-rw-r--r--', owner: 'admin', group: 'admin' },
+            'syslog': { type: 'file', content: FileTypes._generateSyslog(hostname, ip, now), permissions: '-rw-r--r--', owner: 'admin', group: 'admin' },
+            'auth.log': { type: 'file', content: FileTypes._generateAuthLog(hostname, now), permissions: '-rw-r--r--', owner: 'admin', group: 'admin' },
           }, permissions: 'drwxr-xr-x', owner: 'admin', group: 'admin' },
           'spool': { type: 'dir', children: {}, permissions: 'drwxr-xr-x', owner: 'admin', group: 'admin' },
           'tmp': { type: 'dir', children: {}, permissions: 'drwxrwxrwt', owner: 'root', group: 'root' },
@@ -53,7 +60,11 @@ class FileTypes {
             'libssl.so': { type: 'file', content: '', permissions: '-rwxr-xr-x', owner: 'root', group: 'root' },
             'libpam.so': { type: 'file', content: '', permissions: '-rwxr-xr-x', owner: 'root', group: 'root' },
           }, permissions: 'drwxr-xr-x', owner: 'root', group: 'root' },
-          'bin': { type: 'dir', children: {}, permissions: 'drwxr-xr-x', owner: 'root', group: 'root' },
+          'bin': { type: 'dir', children: {
+            'ssh': { type: 'file', content: '', permissions: '-rwxr-xr-x', owner: 'root', group: 'root' },
+            'scp': { type: 'file', content: '', permissions: '-rwxr-xr-x', owner: 'root', group: 'root' },
+            'mail': { type: 'file', content: '', permissions: '-rwxr-xr-x', owner: 'root', group: 'root' },
+          }, permissions: 'drwxr-xr-x', owner: 'root', group: 'root' },
           'local': { type: 'dir', children: {
             'bin': { type: 'dir', children: {}, permissions: 'drwxr-xr-x', owner: 'root', group: 'root' },
           }, permissions: 'drwxr-xr-x', owner: 'root', group: 'root' },
@@ -88,23 +99,22 @@ class FileTypes {
     };
   }
 
-  static _generateSyslog(hostname, ip) {
-    const now = new Date();
+  static _generateSyslog(hostname, ip, now) {
     const lines = [];
     for (let i = 10; i > 0; i--) {
-      const d = new Date(now - i * 60000);
+      const d = new Date(now.getTime() - i * 60000);
       const ts = d.toISOString().replace('T', ' ').substring(0, 19);
       lines.push(`${ts} ${hostname} kernel: [    ${Math.floor(Math.random() * 10000)}.${Math.floor(Math.random() * 999999)}] eth0: link up, 1000Mbps, full-duplex`);
     }
-    lines.push(`${new Date().toISOString().replace('T', ' ').substring(0, 19)} ${hostname} kernel: [    ${Math.floor(Math.random() * 10000)}.${Math.floor(Math.random() * 999999)}] Initializing network interface eth0`);
+    const ts = now.toISOString().replace('T', ' ').substring(0, 19);
+    lines.push(`${ts} ${hostname} kernel: [    ${Math.floor(Math.random() * 10000)}.${Math.floor(Math.random() * 999999)}] Initializing network interface eth0`);
     return lines.join('\n') + '\n';
   }
 
-  static _generateAuthLog(hostname) {
-    const now = new Date();
+  static _generateAuthLog(hostname, now) {
     const lines = [];
     for (let i = 5; i > 0; i--) {
-      const d = new Date(now - i * 120000);
+      const d = new Date(now.getTime() - i * 120000);
       const ts = d.toISOString().replace('T', ' ').substring(0, 19);
       lines.push(`${ts} ${hostname} sshd[${1000 + i}]: Accepted publickey for admin from 10.0.0.${i} port ${22000 + i} ssh2: RSA SHA256:xxxxxxxxxx`);
     }
