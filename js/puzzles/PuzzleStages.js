@@ -102,7 +102,7 @@ class PuzzleStages {
 
   _triggerSecretInfection() {
     const { network, virus } = this;
-    const clean = Object.values(network.nodes).filter(n => !n.infected && !n.isMirror && !n.isolated);
+    const clean = Object.values(network.nodes).filter(n => !n.infected && !n.isMirror && !n.isolated && !n.destroyed);
     if (clean.length === 0) return;
 
     const target = clean[Math.floor(Math.random() * clean.length)].name;
@@ -172,7 +172,7 @@ class PuzzleStages {
       story.setFlag('ending_shadow', true);
     }
 
-    const infected = Object.values(network.nodes).filter(n => n.infected && !n.isMirror);
+    const infected = Object.values(network.nodes).filter(n => n.infected && !n.isMirror && !n.destroyed);
     const allIsolated = infected.length > 0 && infected.every(n => n.isolated);
     if (allIsolated) {
       story.setFlag('ending_firefighting', true);

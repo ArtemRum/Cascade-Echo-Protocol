@@ -42,6 +42,7 @@ describe('Bloomd — _setupVirusFiles', () => {
   it('выставляет bloomdRunning = true', () => {
     const net = new NetworkGraph(networkTopology);
     const virus = new Bloomd(net, virusConfig, () => null);
+    virus.STEALTH_CHANCE = 0;
     virus._setupVirusFiles('dmz-03');
     expect(net.nodes['dmz-03'].bloomdRunning).toBe(true);
   });
@@ -102,6 +103,7 @@ describe('Bloomd — killProcess', () => {
   it('сбрасывает bloomdRunning', () => {
     const net = new NetworkGraph(networkTopology);
     const virus = new Bloomd(net, virusConfig, () => null);
+    virus.STEALTH_CHANCE = 0;
     virus._setupVirusFiles('dmz-03');
     expect(virus.killProcess('dmz-03')).toBe(true);
     expect(net.nodes['dmz-03'].bloomdRunning).toBe(false);
@@ -110,6 +112,7 @@ describe('Bloomd — killProcess', () => {
   it('возвращает true, если процесс был запущен', () => {
     const net = new NetworkGraph(networkTopology);
     const virus = new Bloomd(net, virusConfig, () => null);
+    virus.STEALTH_CHANCE = 0;
     virus._setupVirusFiles('dmz-03');
     expect(virus.killProcess('dmz-03')).toBe(true);
   });
@@ -213,5 +216,168 @@ describe('Bloomd — toJSON / fromJSON', () => {
     expect(virus2.currentStage).toBe(5);
     expect(virus2.mutationIndex).toBe(2);
     expect(virus2.enabled).toBe(true);
+  });
+});
+
+describe('Bloomd — per-node spread timers', () => {
+  it('_scheduleNodeSpread создаёт таймер в nodeSpreadTimers', () => {
+    const net = new NetworkGraph(networkTopology);
+    net.infectNode('dmz-03');
+    const virus = new Bloomd(net, virusConfig, () => null);
+    virus.enabled = true;
+    virus._scheduleNodeSpread('dmz-03');
+    expect(virus.nodeSpreadTimers['dmz-03']).toBeDefined();
+    virus._clearNodeSpreadTimer('dmz-03');
+  });
+
+  it('_clearNodeSpreadTimer удаляет таймер', () => {
+    const net = new NetworkGraph(networkTopology);
+    net.infectNode('dmz-03');
+    const virus = new Bloomd(net, virusConfig, () => null);
+    virus.enabled = true;
+    virus._scheduleNodeSpread('dmz-03');
+    virus._clearNodeSpreadTimer('dmz-03');
+    expect(virus.nodeSpreadTimers['dmz-03']).toBeUndefined();
+  });
+
+  it('_doSpreadFrom(source) заражает чистого соседа source', () => {
+    const net = new NetworkGraph(networkTopology);
+    net.infectNode('dmz-03');
+    const virus = new Bloomd(net, virusConfig, () => null);
+    virus.enabled = true;
+    virus.STEALTH_CHANCE = 0;
+
+    const cleanBefore = net.getCleanNeighbors('dmz-03');
+    expect(cleanBefore.length).toBeGreaterThan(0);
+
+    virus._doSpreadFrom('dmz-03');
+
+    const infected = net.getInfectedNodes();
+    expect(infected.length).toBeGreaterThanOrEqual(2);
+    expect(net.nodes['dmz-03'].infected).toBe(true);
+  });
+
+  it('_doSpreadFrom не заражает, если все соседи изолированы', () => {
+    const net = new NetworkGraph(networkTopology);
+    net.infectNode('dmz-03');
+    const virus = new Bloomd(net, virusConfig, () => null);
+    virus.enabled = true;
+
+    const neighbors = net.getConnections('dmz-03');
+    for (const n of neighbors) {
+      if (!n.startsWith('mirror-')) {
+        net.setIsolated(n, true);
+      }
+    }
+
+    virus._doSpreadFrom('dmz-03');
+    const infected = net.getInfectedNodes();
+    expect(infected.length).toBe(1);
+    expect(infected[0].name).toBe('dmz-03');
+  });
+
+  it('_doSpreadFrom не работает, если source не заражён', () => {
+    const net = new NetworkGraph(networkTopology);
+    const virus = new Bloomd(net, virusConfig, () => null);
+    virus.enabled = true;
+    virus._doSpreadFrom('dmz-01');
+    const infected = net.getInfectedNodes();
+    expect(infected.length).toBe(0);
+  });
+
+  it('_rescheduleAllNodeSpreads создаёт таймеры для всех infected', () => {
+    const net = new NetworkGraph(networkTopology);
+    net.infectNode('dmz-03');
+    net.infectNode('core-11');
+    const virus = new Bloomd(net, virusConfig, () => null);
+    virus.enabled = true;
+    virus._rescheduleAllNodeSpreads();
+    expect(virus.nodeSpreadTimers['dmz-03']).toBeDefined();
+    expect(virus.nodeSpreadTimers['core-11']).toBeDefined();
+    virus._clearNodeSpreadTimer('dmz-03');
+    virus._clearNodeSpreadTimer('core-11');
+  });
+
+  it('infectSilently вызывает _scheduleNodeSpread', () => {
+    const net = new NetworkGraph(networkTopology);
+    const virus = new Bloomd(net, virusConfig, () => null);
+    virus.enabled = true;
+    virus.infectSilently('dmz-03');
+    expect(virus.nodeSpreadTimers['dmz-03']).toBeDefined();
+    virus._clearNodeSpreadTimer('dmz-03');
+  });
+
+  it('infectStage создаёт таймеры для новых нод', () => {
+    const net = new NetworkGraph(networkTopology);
+    const virus = new Bloomd(net, virusConfig, () => null);
+    virus.enabled = true;
+    const infected = virus.infectStage(2);
+    expect(infected.length).toBe(2);
+    for (const name of infected) {
+      expect(virus.nodeSpreadTimers[name]).toBeDefined();
+      virus._clearNodeSpreadTimer(name);
+    }
+  });
+});
+
+describe('Bloomd — stealth', () => {
+  it('STEALTH_CHANCE=0 → node.stealth=false, bloomdRunning=true', () => {
+    const net = new NetworkGraph(networkTopology);
+    const virus = new Bloomd(net, virusConfig, () => null);
+    virus.STEALTH_CHANCE = 0;
+    virus._setupVirusFiles('dmz-03');
+    expect(net.nodes['dmz-03'].stealth).toBe(false);
+    expect(net.nodes['dmz-03'].bloomdRunning).toBe(true);
+  });
+
+  it('STEALTH_CHANCE=1 + stage>=4 → node.stealth=true, bloomdRunning=true', () => {
+    const net = new NetworkGraph(networkTopology);
+    const virus = new Bloomd(net, virusConfig, () => null);
+    virus.STEALTH_CHANCE = 1;
+    virus.currentStage = 4;
+    virus._setupVirusFiles('dmz-03');
+    expect(net.nodes['dmz-03'].stealth).toBe(true);
+    expect(net.nodes['dmz-03'].bloomdRunning).toBe(true);
+  });
+
+  it('повторный вызов _setupVirusFiles не перезаписывает существующий stealth', () => {
+    const net = new NetworkGraph(networkTopology);
+    const virus = new Bloomd(net, virusConfig, () => null);
+    net.nodes['dmz-03'].stealth = true;
+    net.nodes['dmz-03'].bloomdRunning = false;
+    virus.STEALTH_CHANCE = 0;
+    virus.currentStage = 0;
+    virus._setupVirusFiles('dmz-03');
+    expect(net.nodes['dmz-03'].stealth).toBe(true);
+    expect(net.nodes['dmz-03'].bloomdRunning).toBe(true);
+  });
+
+  it('_autoCleanNode очищает stealth', () => {
+    const net = new NetworkGraph(networkTopology);
+    const virus = new Bloomd(net, virusConfig, () => null);
+    net.nodes['dmz-03'].stealth = true;
+    net.nodes['dmz-03'].hasVirusFile = true;
+    net.nodes['dmz-03'].bloomdRunning = false;
+    net.nodes['dmz-03'].hasVirusFile = false;
+    virus._autoCleanNode('dmz-03');
+    expect(net.nodes['dmz-03'].stealth).toBe(false);
+    expect(net.nodes['dmz-03'].infected).toBe(false);
+  });
+
+  it('STEALTH_CHANCE=0.25 + stage>=4 создаёт stealth-ноды с вероятностью ~25%', () => {
+    const net = new NetworkGraph(networkTopology);
+    const virus = new Bloomd(net, virusConfig, () => null);
+    let stealthCount = 0;
+    const trials = 200;
+    for (let i = 0; i < trials; i++) {
+      const net2 = new NetworkGraph(networkTopology);
+      const v2 = new Bloomd(net2, virusConfig, () => null);
+      v2.currentStage = 4;
+      v2._setupVirusFiles('dmz-03');
+      if (net2.nodes['dmz-03'].stealth) stealthCount++;
+    }
+    const ratio = stealthCount / trials;
+    expect(ratio).toBeGreaterThan(0.1);
+    expect(ratio).toBeLessThan(0.45);
   });
 });

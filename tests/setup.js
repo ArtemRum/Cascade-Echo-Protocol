@@ -108,6 +108,7 @@ export function createInstances() {
     addSystemMessage: () => {},
     _updateStatusBar: () => {},
     _autoSave: () => {},
+    disconnectFromNode: () => {},
   };
 
   const puzzles = new PuzzleStages(story, virus, network, mirror, email, filesystems);

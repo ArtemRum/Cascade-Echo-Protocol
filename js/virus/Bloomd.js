@@ -5,7 +5,7 @@ class Bloomd {
     this.stageConfig = config.stages || {};
     this.getFS = getFS || (() => null);
     this.currentStage = 0;
-    this.spreadInterval = null;
+    this.nodeSpreadTimers = {};
     this.virusProcesses = {};
     this.mutationIndex = 0;
     this.onSpread = null;
@@ -14,18 +14,19 @@ class Bloomd {
     this.enabled = false;
     this.nodeStrains = {};
     this.decoyPaths = {};
+    this.STEALTH_CHANCE = 0.25;
   }
 
   start() {
     this.enabled = true;
-    this._scheduleSpread();
+    this._rescheduleAllNodeSpreads();
   }
 
   stop() {
-    if (this.spreadInterval) {
-      clearTimeout(this.spreadInterval);
-      this.spreadInterval = null;
+    for (const name of Object.keys(this.nodeSpreadTimers)) {
+      clearTimeout(this.nodeSpreadTimers[name]);
     }
+    this.nodeSpreadTimers = {};
     this.enabled = false;
   }
 
@@ -34,20 +35,43 @@ class Bloomd {
     const stageKey = String(stage);
     const stageCfg = this.stageConfig[stageKey];
     if (stageCfg && stageCfg.spread_interval > 0) {
-      if (this.spreadInterval) clearTimeout(this.spreadInterval);
-      this._scheduleSpread();
+      this._rescheduleAllNodeSpreads();
     }
   }
 
-  _scheduleSpread() {
+  _scheduleNodeSpread(nodeName) {
     if (!this.enabled) return;
+    const node = this.network.nodes[nodeName];
+    if (!node || !node.infected || node.isMirror || node.destroyed) return;
     const stageKey = String(this.currentStage);
     const stageCfg = this.stageConfig[stageKey];
-    const interval = (stageCfg && stageCfg.spread_interval > 0) ? stageCfg.spread_interval * 1000 : 420000;
-    this.spreadInterval = setTimeout(() => {
-      this._doSpread();
-      this._scheduleSpread();
+    const baseInterval = (stageCfg && stageCfg.spread_interval > 0) ? stageCfg.spread_interval * 1000 : 420000;
+    const interval = Math.round(baseInterval * 1.5 * (0.85 + Math.random() * 0.3));
+    this._clearNodeSpreadTimer(nodeName);
+    this.nodeSpreadTimers[nodeName] = setTimeout(() => {
+      this._doSpreadFrom(nodeName);
+      if (this.enabled && this.network.nodes[nodeName] && this.network.nodes[nodeName].infected) {
+        this._scheduleNodeSpread(nodeName);
+      }
     }, interval);
+  }
+
+  _clearNodeSpreadTimer(nodeName) {
+    if (this.nodeSpreadTimers[nodeName]) {
+      clearTimeout(this.nodeSpreadTimers[nodeName]);
+      delete this.nodeSpreadTimers[nodeName];
+    }
+  }
+
+  _rescheduleAllNodeSpreads() {
+    for (const name of Object.keys(this.nodeSpreadTimers)) {
+      clearTimeout(this.nodeSpreadTimers[name]);
+    }
+    this.nodeSpreadTimers = {};
+    const infected = this.network.getInfectedNodes();
+    for (const node of infected) {
+      this._scheduleNodeSpread(node.name);
+    }
   }
 
   _getStrainPool(stage) {
@@ -88,6 +112,7 @@ class Bloomd {
       this.network.infectNode(node.name);
       this.network.nodes[node.name].virusStrain = strain;
       this._setupVirusFiles(node.name, strain);
+      this._scheduleNodeSpread(node.name);
       if (this.onBloomEffect) this.onBloomEffect(node.name);
       if (this.onSpread) this.onSpread(node.name);
       infectedNames.push(node.name);
@@ -118,12 +143,11 @@ class Bloomd {
     return infectedNames;
   }
 
-  _doSpread() {
+  _doSpreadFrom(sourceName) {
     if (!this.enabled) return;
-    const infected = this.network.getInfectedNodes();
-    if (infected.length === 0) return;
-    const source = infected[Math.floor(Math.random() * infected.length)];
-    const cleanNeighbors = this.network.getCleanNeighbors(source.name);
+    const source = this.network.nodes[sourceName];
+    if (!source || !source.infected || source.destroyed) return;
+    const cleanNeighbors = this.network.getCleanNeighbors(sourceName);
     if (cleanNeighbors.length === 0) return;
     const target = cleanNeighbors[Math.floor(Math.random() * cleanNeighbors.length)];
     this.network.infectNode(target);
@@ -131,6 +155,7 @@ class Bloomd {
     this.nodeStrains[target] = strain;
     this.network.nodes[target].virusStrain = strain;
     this._setupVirusFiles(target, strain);
+    this._scheduleNodeSpread(target);
     if (this.onBloomEffect) this.onBloomEffect(target);
     if (this.onSpread) this.onSpread(target);
   }
@@ -147,6 +172,11 @@ class Bloomd {
       fs.writeFile(virusPath, Utils.ELF_BINARY);
     }
     node.hasVirusFile = true;
+
+    const isStealth = !node.stealth && this.currentStage >= 4 && Math.random() < this.STEALTH_CHANCE;
+    if (isStealth) {
+      node.stealth = true;
+    }
     node.bloomdRunning = true;
 
     if (this.currentStage >= 3) {
@@ -184,7 +214,6 @@ class Bloomd {
     const node = this.network.nodes[nodeName];
     if (!node || node.isolated || node.isMirror || node.destroyed) return false;
     node.infected = true;
-    node.bloomdRunning = true;
     node.hasVirusFile = true;
     this.network.nodeStates[nodeName] = 'infected';
     this.network.everInfected.add(nodeName);
@@ -193,6 +222,7 @@ class Bloomd {
     this.nodeStrains[nodeName] = strain;
     node.virusStrain = strain;
     this._setupVirusFiles(nodeName, strain);
+    this._scheduleNodeSpread(nodeName);
     return true;
   }
 
@@ -241,7 +271,9 @@ class Bloomd {
     if (!node) return;
     if (!node.bloomdRunning && !node.hasVirusFile && !node.hasWatchdog && !node.crontabInfected) {
       node.infected = false;
+      node.stealth = false;
       if (!node.isolated) this.network.nodeStates[nodeName] = 'clean';
+      this._clearNodeSpreadTimer(nodeName);
     }
   }
 
@@ -338,7 +370,30 @@ class Bloomd {
     this.nodeStrains = data.nodeStrains || {};
     for (const [name, strain] of Object.entries(this.nodeStrains)) {
       const node = this.network?.nodes?.[name];
-      if (node) node.virusStrain = strain;
+      if (!node) continue;
+      node.virusStrain = strain;
+      const fs = this.getFS(name);
+      if (fs) {
+        fs.writeFile(strain.path, Utils.ELF_BINARY);
+        if (node.hasWatchdog) {
+          fs.writeFile(this.config.watchdog_path || '/usr/sbin/.bloom_watchdog', Utils.ELF_BINARY);
+        }
+        if (node.crontabInfected) {
+          const entry = this.config.crontab_entry || '*/5 * * * * root /usr/lib/.bloomd';
+          const crontab = fs.readFile('/etc/crontab') || '';
+          if (!crontab.includes(entry)) {
+            fs.writeFile('/etc/crontab', crontab + entry + '\n');
+          }
+          const rcEntry = this.config.rc_local_entry || '/usr/lib/.bloomd &';
+          const rc = fs.readFile('/etc/rc.local') || '';
+          if (!rc.includes(rcEntry)) {
+            fs.writeFile('/etc/rc.local', rc + '\n' + rcEntry + '\n');
+          }
+        }
+      }
+    }
+    if (this.enabled) {
+      this._rescheduleAllNodeSpreads();
     }
   }
 }

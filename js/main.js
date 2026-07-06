@@ -439,6 +439,7 @@ class Game {
         node.destroyed = true;
         node.isolated = true;
         node.bloomdRunning = false;
+        this.disconnectFromNode(node.name, 'server destroyed by bloomd overload');
         this.addSystemMessage(`[VIRUS] ${node.name} destroyed by bloomd overload.`);
       }
     }
@@ -452,6 +453,24 @@ class Game {
     const total = allNodes.length || 1;
     const tension = Math.min(1, (destroyedCount * 2 + liveCount) / total);
     if (this.audio) this.audio.setAmbientTension(tension);
+  }
+
+  disconnectFromNode(nodeName, reason) {
+    if (!this.tabManager || !Array.isArray(this.tabManager.panels)) return;
+    let disconnected = false;
+    for (const panel of this.tabManager.panels) {
+      if (panel.connectedNode === nodeName) {
+        panel.writeln('\n' + Utils.ANSI.RED + '[!] Connection lost: ' + reason + Utils.ANSI.RESET + '\n');
+        panel.connectedNode = null;
+        panel.currentFS = null;
+        panel.cwd = '/';
+        panel.sshUser = null;
+        disconnected = true;
+      }
+    }
+    if (disconnected) {
+      this.addSystemMessage(`[SSH] Disconnected from ${nodeName} — ${reason}`);
+    }
   }
 
   _showStatus(msg) {

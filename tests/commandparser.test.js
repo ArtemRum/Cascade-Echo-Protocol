@@ -23,6 +23,7 @@ function createMockParseGame() {
     connectedNode: 'dmz-03',
     terminal: { clear() {} },
     commandHistory: [],
+    writeln: () => {},
   };
 
   game.tabManager = {
@@ -174,6 +175,31 @@ describe('CommandParser — _ps', () => {
     network.nodes['dmz-03'].hasWatchdog = false;
     const result = cp.parse('ps');
     expect(result).not.toContain('.bloomd');
+  });
+
+  it('показывает bloomd в ps для stealth-ноды', () => {
+    const { cp, network } = createMockParseGame();
+    network.nodes['dmz-03'].bloomdRunning = true;
+    network.nodes['dmz-03'].stealth = true;
+    const result = cp.parse('ps');
+    expect(result).toContain('.bloomd');
+  });
+});
+
+describe('CommandParser — _top', () => {
+  it('показывает bloomd если bloomdRunning и не stealth', () => {
+    const { cp, network } = createMockParseGame();
+    network.nodes['dmz-03'].bloomdRunning = true;
+    const result = cp.parse('top');
+    expect(result).toContain('.bloomd');
+  });
+
+  it('показывает bloomd в top для stealth-ноды', () => {
+    const { cp, network } = createMockParseGame();
+    network.nodes['dmz-03'].bloomdRunning = true;
+    network.nodes['dmz-03'].stealth = true;
+    const result = cp.parse('top');
+    expect(result).toContain('.bloomd');
   });
 });
 

@@ -172,3 +172,52 @@ describe('NetworkGraph — toJSON / fromJSON', () => {
     expect(net2.nodeStates['dmz-05']).toBe('isolated');
   });
 });
+
+describe('NetworkGraph — stealth', () => {
+  it('toJSON сериализует stealth', () => {
+    const net = new NetworkGraph(networkTopology);
+    net.nodes['dmz-03'].stealth = true;
+    const saved = net.toJSON();
+    expect(saved['dmz-03'].stealth).toBe(true);
+  });
+
+  it('fromJSON восстанавливает stealth', () => {
+    const net = new NetworkGraph(networkTopology);
+    net.nodes['dmz-03'].stealth = true;
+    const saved = net.toJSON();
+    const net2 = new NetworkGraph(networkTopology);
+    net2.fromJSON(saved);
+    expect(net2.nodes['dmz-03'].stealth).toBe(true);
+  });
+
+  it('fromJSON загружает clean-узел с stealth=false', () => {
+    const net = new NetworkGraph(networkTopology);
+    const saved = net.toJSON();
+    const net2 = new NetworkGraph(networkTopology);
+    net2.fromJSON(saved);
+    expect(net2.nodes['dmz-03'].stealth).toBe(false);
+  });
+
+  it('cleanNode очищает stealth', () => {
+    const net = new NetworkGraph(networkTopology);
+    net.nodes['dmz-03'].stealth = true;
+    net.cleanNode('dmz-03');
+    expect(net.nodes['dmz-03'].stealth).toBe(false);
+  });
+
+  it('getTopologyAscii показывает [ ] для stealth вместо [X]', () => {
+    const net = new NetworkGraph(networkTopology);
+    net.nodes['dmz-03'].infected = true;
+    net.nodes['dmz-03'].stealth = true;
+    const topology = net.getTopologyAscii();
+    expect(topology).toContain('[ ] dmz-03');
+    expect(topology).not.toContain('[X] dmz-03');
+  });
+
+  it('getTopologyAscii показывает [X] для обычной infected ноды', () => {
+    const net = new NetworkGraph(networkTopology);
+    net.nodes['dmz-03'].infected = true;
+    const topology = net.getTopologyAscii();
+    expect(topology).toContain('[X] dmz-03');
+  });
+});

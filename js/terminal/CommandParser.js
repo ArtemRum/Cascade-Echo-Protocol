@@ -741,6 +741,7 @@ class CommandParser {
       this.game.addSystemMessage(`[NET] ${nodeName} isolated from network. USAT -${Math.abs(penalty)}%`);
       this.game.email.addComplaint(nodeName, node.segment);
       if (this.game?.puzzles) this.game.puzzles.onNodeIsolated();
+      this.game.disconnectFromNode(nodeName, 'network interface disabled');
       return `${nodeName}: eth0 DOWN`;
     }
     if (args[0] === 'eth0' && args[1] === 'up') {
@@ -768,6 +769,7 @@ class CommandParser {
             network.setIsolated(node.name, true);
             const penalty = this.game.usat.getIsolationPenalty(node);
             this.game.usat.modify(penalty);
+            this.game.disconnectFromNode(node.name, 'segment isolated by firewall rule');
           }
         }
         this.game.addSystemMessage(`[NET] ${segment.toUpperCase()} segment isolated via iptables.`);
@@ -948,9 +950,11 @@ class CommandParser {
     const nodeName = Object.keys(network.nodes).find(k => network.nodes[k].ip === host || k === host);
     if (!nodeName) return `ssh: Could not resolve hostname ${host}: Name or service not known`;
     const node = network.nodes[nodeName];
-    if (!network.canSsh(p.connectedNode, nodeName)) {
-      return `ssh: connect to host ${host} port 22: Connection refused (node is isolated)`;
-    }
+    if (!node) return `ssh: Could not resolve hostname ${host}: Name or service not known`;
+    if (node.destroyed) return `ssh: connect to host ${host} port 22: Connection refused (node is destroyed)`;
+    if (node.isolated) return `ssh: connect to host ${host} port 22: Connection refused (node is isolated)`;
+    const fromNode = p.connectedNode ? network.nodes[p.connectedNode] : null;
+    if (fromNode && fromNode.isolated) return `ssh: connect to host ${host} port 22: Connection refused (currently isolated — cannot route)`;
     p.connectedNode = nodeName;
     p.currentFS = this.game.getFSForNode(nodeName);
     p.cwd = '/';

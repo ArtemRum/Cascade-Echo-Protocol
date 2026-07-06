@@ -12,7 +12,8 @@ describe('Integration: полное заражение и очистка одн�
     fs.writeFile('/usr/bin/ssh', '');
     fs.writeFile('/usr/bin/scp', '');
 
-    // Setup virus on dmz-03
+    // Setup virus on dmz-03 (disable stealth for deterministic test)
+    inst.virus.STEALTH_CHANCE = 0;
     inst.virus._setupVirusFiles('dmz-03');
 
     const mockPanel = {
@@ -21,6 +22,7 @@ describe('Integration: полное заражение и очистка одн�
       connectedNode: 'dmz-03',
       terminal: { clear() {} },
       commandHistory: [],
+      writeln: () => {},
     };
 
     game.tabManager = { getActivePanel() { return mockPanel; } };
@@ -71,6 +73,7 @@ describe('Integration: USAT падает при изоляции', () => {
       connectedNode: 'dmz-03',
       terminal: { clear() {} },
       commandHistory: [],
+      writeln: () => {},
     };
 
     game.tabManager = { getActivePanel() { return mockPanel; } };
@@ -104,9 +107,93 @@ describe('Integration: вирус не распространяется на и�
         inst.network.setIsolated(n, true);
       }
     }
-    inst.virus._doSpread();
+    inst.virus._doSpreadFrom('dmz-03');
     const infected = inst.network.getInfectedNodes();
     expect(infected.length).toBe(1);
     expect(infected[0].name).toBe('dmz-03');
+  });
+});
+
+describe('Integration: stealth-нода', () => {
+  it('ps показывает bloomd → ls -la находит файл → rm очищает', () => {
+    const inst = createInstances();
+    const src = loadSource();
+    const CommandParserClass = new Function(src.CommandParser + '; return CommandParser;')();
+
+    const game = inst.game;
+    const fs = game.filesystems['dmz-03'];
+    fs.writeFile('/usr/bin/ssh', '');
+    fs.writeFile('/usr/bin/scp', '');
+
+    // Setup stealth virus on dmz-03 (100% stealth, stage 4+)
+    inst.virus.STEALTH_CHANCE = 1;
+    inst.virus.currentStage = 4;
+    inst.virus._setupVirusFiles('dmz-03');
+    inst.network.nodes['dmz-03'].infected = true;
+
+    const mockPanel = {
+      cwd: '/',
+      currentFS: fs,
+      connectedNode: 'dmz-03',
+      terminal: { clear() {} },
+      commandHistory: [],
+      writeln: () => {},
+    };
+
+    game.tabManager = { getActivePanel() { return mockPanel; } };
+    game.getFSForNode = (name) => game.filesystems[name] || null;
+
+    const cp = new CommandParserClass(game);
+
+    // ps shows bloomd even on stealth node (stage 4+)
+    const ps1 = cp.parse('ps');
+    expect(ps1).toContain('.bloomd');
+
+    // ls -la → finds the virus file in /usr/lib
+    const ls = cp.parse('ls -la /usr/lib');
+    expect(ls).toContain('.bloomd');
+
+    // rm the virus file
+    const rm = cp.parse('rm /usr/lib/.bloomd');
+    expect(rm).toBe('');
+
+    // find → no results
+    const find = cp.parse('find /usr -name .bloomd');
+    expect(find).toBe('');
+  });
+
+  it('kill 1425 на stealth-ноде → terminated', () => {
+    const inst = createInstances();
+    const src = loadSource();
+    const CommandParserClass = new Function(src.CommandParser + '; return CommandParser;')();
+
+    const game = inst.game;
+    const fs = game.filesystems['dmz-03'];
+    fs.writeFile('/usr/bin/ssh', '');
+    fs.writeFile('/usr/bin/scp', '');
+
+    // Setup stealth virus on dmz-03 (stage 4+ → bloomdRunning=true)
+    inst.virus.STEALTH_CHANCE = 1;
+    inst.virus.currentStage = 4;
+    inst.virus._setupVirusFiles('dmz-03');
+    inst.network.nodes['dmz-03'].infected = true;
+
+    const mockPanel = {
+      cwd: '/',
+      currentFS: fs,
+      connectedNode: 'dmz-03',
+      terminal: { clear() {} },
+      commandHistory: [],
+      writeln: () => {},
+    };
+
+    game.tabManager = { getActivePanel() { return mockPanel; } };
+    game.getFSForNode = (name) => game.filesystems[name] || null;
+
+    const cp = new CommandParserClass(game);
+
+    // bloomdRunning=true → kill 1425 works
+    const result = cp.parse('kill 1425');
+    expect(result).toBe('[1]     1425 terminated');
   });
 });

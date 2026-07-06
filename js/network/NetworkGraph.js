@@ -29,6 +29,7 @@ class NetworkGraph {
         virusLag: 0,
         virusLagMax: 0,
         destroyed: false,
+        stealth: false,
         virusStrain: null,
       };
       this.nodeStates[id] = this.initialInfected.includes(id) ? 'infected' : 'clean';
@@ -64,6 +65,7 @@ class NetworkGraph {
         virusLag: 0,
         virusLagMax: 0,
         destroyed: false,
+        stealth: false,
         virusStrain: null,
         isMirror: true,
         driftPattern: proxy.drift_pattern || '+5',
@@ -170,6 +172,7 @@ class NetworkGraph {
     node.hasVirusFile = false;
     node.hasWatchdog = false;
     node.crontabInfected = false;
+    node.stealth = false;
     node.virusLag = 0;
     node.virusLagMax = 0;
     node.destroyed = false;
@@ -216,6 +219,7 @@ class NetworkGraph {
         virusLag: node.virusLag,
         virusLagMax: node.virusLagMax,
         destroyed: node.destroyed,
+        stealth: node.stealth || false,
         virusStrain: node.virusStrain || null,
       };
     }
@@ -239,6 +243,7 @@ class NetworkGraph {
         node.virusLag = saved.virusLag || 0;
         node.virusLagMax = saved.virusLagMax || 0;
         node.destroyed = saved.destroyed || false;
+        node.stealth = saved.stealth || false;
         node.virusStrain = saved.virusStrain || null;
         this.nodeStates[name] = saved.destroyed ? 'destroyed' : saved.infected ? 'infected' : saved.isolated ? 'isolated' : 'clean';
       }
@@ -256,6 +261,7 @@ class NetworkGraph {
         let symbol;
         if (node.destroyed) symbol = '[D]';
         else if (node.isolated) symbol = '[#]';
+        else if (node.stealth) symbol = '[ ]';
         else if (node.infected) symbol = '[X]';
         else symbol = '[ ]';
         output += `${symbol} ${name} (${node.ip})  `;
