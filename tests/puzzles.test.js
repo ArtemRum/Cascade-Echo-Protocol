@@ -50,7 +50,7 @@ describe('PuzzleStages — _isStageComplete', () => {
   it('stage 2: таймер >= 1020 И containedRatio > 0.3 → true', () => {
     const { game, network } = createFullGame();
     game.puzzles.stageTimers[2] = 1020;
-    // Clean dmz-03 (only initially infected node)
+    network.infectNode('dmz-03');
     network.cleanNode('dmz-03');
     expect(game.puzzles._isStageComplete(2)).toBe(true);
   });

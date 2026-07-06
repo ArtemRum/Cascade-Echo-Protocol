@@ -29,11 +29,19 @@ class PuzzleStages {
   advanceTo(stage) {
     const { story, virus, network, mirror } = this;
     story.setStage(stage);
+    const infectedNames = virus.infectStage(stage) || [];
     if (stage >= 3) {
       this._injectMirrorLogs();
     }
     if (stage === 1) {
       story.fireEvent('stage_1_first_infection');
+      if (infectedNames.length > 0) {
+        const first = infectedNames[0];
+        const ip = network?.nodes?.[first]?.ip || 'unknown';
+        if (story.onSystemMessage) {
+          story.onSystemMessage(`[ALERT] Unknown process 'bloomd' detected on ${first} (${ip}) — CPU load 12%.`);
+        }
+      }
     }
     return true;
   }
@@ -56,7 +64,7 @@ class PuzzleStages {
     if (this.story.isGameOver()) return;
     const stage = this.story.currentStage;
 
-    if (stage >= 3) {
+    if (stage >= 1) {
       this._checkBranchOutcomes();
       if (this.story.isGameOver()) return;
     }
@@ -130,6 +138,11 @@ class PuzzleStages {
 
     if (infectedCount === 0 && stage >= 1 && stage <= 3 && !this.puzzleState.secretInfectionDone) {
       this._triggerSecretInfection();
+      return;
+    }
+
+    if (infectedCount === 0 && stage >= 1 && stage <= 3 && this.puzzleState.secretInfectionDone) {
+      this._advance();
       return;
     }
 

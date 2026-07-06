@@ -1,6 +1,6 @@
 class GameClock {
   constructor(baseDate) {
-    this.baseDate = baseDate || new Date('2026-07-05T22:00:00');
+    this.baseDate = baseDate || new Date();
     this.elapsed = 0;
   }
 
@@ -18,6 +18,11 @@ class GameClock {
 
   toLocaleTimeString() {
     return this.now().toLocaleTimeString();
+  }
+
+  toShortTime() {
+    const d = this.now();
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   }
 
   getTime() {

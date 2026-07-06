@@ -234,7 +234,9 @@ class Game {
     };
 
     this.usat.onComplaintTick = (score) => {
-      this.email.addComplaint('unknown', 'all');
+      if (this.network && this.network.getInfectedNodes().length > 0) {
+        this.email.addComplaint('unknown', 'all');
+      }
       this._updateStatusBar();
     };
 
@@ -303,13 +305,13 @@ class Game {
     const fs = this.filesystems['dmz-01'];
     if (!fs) return;
     fs.writeFile('/tmp/.test_virus',
-      'CASCADE TRAINING DRILL — TEST INDICATOR\n\n' +
-      'Simulated threat for calibration.\n' +
-      'Procedure: terminate process (PID 9999), then remove this file.\n\n' +
+      'CASCADE TRAINING DRILL — TEST VIRUS\n\n' +
+      'Process: /tmp/.test_virus (PID 9999)\n' +
+      'Kill it, then remove this file.\n\n' +
       '— Training Assistant v2.1');
     const log = fs.readFile('/var/log/syslog') || '';
     fs.writeFile('/var/log/syslog',
-      log + '2026-07-05 22:01:00 dmz-01 [WARN] Unusual process detected: /tmp/.test_virus_daemon (PID 9999)\n');
+      log + '2026-07-05 22:01:00 dmz-01 [WARN] Unusual process detected: /tmp/.test_virus (PID 9999)\n');
   }
 
   _initUI() {
@@ -350,10 +352,14 @@ class Game {
     const active = this.tabManager.getActivePanel();
     if (!active) return;
     if (this.story) this.story.fireEvent('stage_0');
+    const timeStr = this.gameClock ? this.gameClock.toShortTime() : new Date().toLocaleTimeString();
+    const prefix = '  Night Shift — ';
+    const padLen = 46 - prefix.length - timeStr.length;
+    const line = prefix + timeStr + ' '.repeat(Math.max(0, padLen));
     const msg = [
       '╔══════════════════════════════════════════════════╗',
       '║  CASCADE DYNAMICS — NETSEC TERMINAL v2.4        ║',
-      '║  Night Shift — 22:00                            ║',
+      '║' + line + '║',
       '╚══════════════════════════════════════════════════╝',
       '',
       'Operator ' + this.auth.currentUser + ' online.',
@@ -493,7 +499,7 @@ class Game {
     const destroyedCount = this.network ? this.network.getDestroyedNodes().length : 0;
     const mailCount = this.email ? this.email.unreadCount : 0;
 
-    this._statusItems.time.textContent = this.gameClock ? this.gameClock.toLocaleTimeString() : new Date().toLocaleTimeString();
+    this._statusItems.time.textContent = this.gameClock ? this.gameClock.toShortTime() : new Date().toLocaleTimeString();
     this._statusItems.stage.textContent = 'Stage ' + (this.story ? this.story.currentStage : 0);
     this._statusItems.infected.textContent = 'Infected: ' + infectedCount;
     this._statusItems.isolated.textContent = 'Isolated: ' + isolatedCount;

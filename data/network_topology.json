@@ -54,6 +54,5 @@
     "mirror-beta": { "ip": "10.255.0.2", "connected_to": ["dmz-04","dmz-08"], "drift_pattern": "+3", "drift_interval": 15 },
     "mirror-gamma": { "ip": "10.255.0.3", "connected_to": ["core-17","archive-25"], "drift_pattern": "+7", "drift_interval": 18 },
     "mirror-delta": { "ip": "10.255.0.4", "connected_to": ["core-18","archive-26"], "drift_pattern": "+11", "drift_interval": 22 }
-  },
-  "initial_infected": ["dmz-03"]
+  }
 }

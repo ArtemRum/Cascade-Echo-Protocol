@@ -98,7 +98,7 @@
   "story_events": {
     "stage_0": [
       { "type": "email", "email_id": "stage_0_welcome" },
-      { "type": "assistant_message", "content": "Welcome to the night shift, operator. Let's start with a quick calibration drill — I've planted a test signal on dmz-01 (10.0.1.1).\n\nConnect to it, locate the indicator in /tmp/, and eliminate it. Process first, then file — standard containment procedure." }
+      { "type": "assistant_message", "content": "Welcome to the night shift, operator. Let's start with a quick calibration drill — I've planted a test signal on dmz-01 (10.0.1.1).\n\nConnect to it, use `ps` or `top` to spot the process, then check /tmp/ with `ls -la` to find the indicator file. Eliminate both — process first, then file. Standard containment procedure." }
     ],
     "stage_1": [
       { "type": "email", "email_id": "stage_1_start" },
@@ -106,7 +106,6 @@
       { "type": "assistant_message", "content": "Reports of slow data access on DMZ segment. I'd look at active processes on the edge nodes. Anything consuming unusual CPU is worth investigating." }
     ],
     "stage_1_first_infection": [
-      { "type": "system_message", "content": "[ALERT] Unknown process 'bloomd' detected on dmz-03 (10.0.1.3) — CPU load 12%." },
       { "type": "assistant_message", "content": "That process isn't in the standard build manifest. If it's malicious, terminate it and trace back to its binary on disk before it spreads. Standard containment procedure." }
     ],
     "stage_2": [

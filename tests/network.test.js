@@ -17,11 +17,11 @@ describe('NetworkGraph — конструктор', () => {
     expect(mirrors.length).toBe(4);
   });
 
-  it('dmz-03 начально заражён', () => {
+  it('dmz-03 не заражён изначально', () => {
     const node = network.nodes['dmz-03'];
-    expect(node.infected).toBe(true);
-    expect(node.bloomdRunning).toBe(true);
-    expect(node.hasVirusFile).toBe(true);
+    expect(node.infected).toBe(false);
+    expect(node.bloomdRunning).toBe(false);
+    expect(node.hasVirusFile).toBe(false);
   });
 
   it('dmz-01 чистый', () => {
@@ -68,9 +68,7 @@ describe('NetworkGraph — getInfectedNodes', () => {
   it('возвращает только заражённые не-mirror узлы', () => {
     const net = new NetworkGraph(networkTopology);
     const infected = net.getInfectedNodes();
-    expect(infected.length).toBe(1);
-    expect(infected[0].name).toBe('dmz-03');
-    infected.forEach(n => expect(n.isMirror).toBeFalsy());
+    expect(infected.length).toBe(0);
   });
 });
 

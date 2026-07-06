@@ -1,12 +1,12 @@
 {
   "stages": {
     "0": { "name": "Tutorial", "spread_interval": 0, "watchdog_active": false, "watchdog_restores_file": false, "mirrors_active": false, "drift_active": false, "crontab_persistence": false, "description": "Night shift briefing — learning the tools" },
-    "1": { "name": "First Bloom", "spread_interval": 420, "watchdog_active": false, "watchdog_restores_file": false, "mirrors_active": false, "drift_active": false, "crontab_persistence": false, "description": "Single infected node, basic kill+rm" },
-    "2": { "name": "Propagation", "spread_interval": 420, "watchdog_active": false, "watchdog_restores_file": false, "mirrors_active": false, "drift_active": false, "crontab_persistence": false, "description": "2-3 nodes infected, isolation becomes relevant" },
-    "3": { "name": "The Mirror", "spread_interval": 300, "watchdog_active": true, "watchdog_restores_file": false, "mirrors_active": true, "drift_active": true, "crontab_persistence": false, "description": "Watchdog appears, mirrors begin to twist routes" },
-    "4": { "name": "Deep Roots", "spread_interval": 300, "watchdog_active": true, "watchdog_restores_file": false, "mirrors_active": true, "drift_active": true, "crontab_persistence": true, "description": "Virus writes to crontab, mirrors loop" },
-    "5": { "name": "The Echo", "spread_interval": 180, "watchdog_active": true, "watchdog_restores_file": true, "mirrors_active": true, "drift_active": true, "crontab_persistence": true, "description": "Archive discovered, watchdog restores file, mutation active" },
-    "6": { "name": "Final Choice", "spread_interval": 180, "watchdog_active": true, "watchdog_restores_file": true, "mirrors_active": true, "drift_active": true, "crontab_persistence": true, "description": "Echo project revealed, ending decision" }
+    "1": { "name": "First Bloom", "spread_interval": 150, "watchdog_active": false, "watchdog_restores_file": false, "mirrors_active": false, "drift_active": false, "crontab_persistence": false, "description": "Single infected node, basic kill+rm" },
+    "2": { "name": "Propagation", "spread_interval": 150, "watchdog_active": false, "watchdog_restores_file": false, "mirrors_active": false, "drift_active": false, "crontab_persistence": false, "description": "2-3 nodes infected, isolation becomes relevant" },
+    "3": { "name": "The Mirror", "spread_interval": 100, "watchdog_active": true, "watchdog_restores_file": false, "mirrors_active": true, "drift_active": true, "crontab_persistence": false, "description": "Watchdog appears, mirrors begin to twist routes" },
+    "4": { "name": "Deep Roots", "spread_interval": 100, "watchdog_active": true, "watchdog_restores_file": false, "mirrors_active": true, "drift_active": true, "crontab_persistence": true, "description": "Virus writes to crontab, mirrors loop" },
+    "5": { "name": "The Echo", "spread_interval": 60, "watchdog_active": true, "watchdog_restores_file": true, "mirrors_active": true, "drift_active": true, "crontab_persistence": true, "description": "Archive discovered, watchdog restores file, mutation active" },
+    "6": { "name": "Final Choice", "spread_interval": 60, "watchdog_active": true, "watchdog_restores_file": true, "mirrors_active": true, "drift_active": true, "crontab_persistence": true, "description": "Echo project revealed, ending decision" }
   },
   "virus": {
     "process_name": "bloomd",

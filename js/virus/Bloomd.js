@@ -12,6 +12,8 @@ class Bloomd {
     this.onBloomEffect = null;
     this.onBloomInterference = null;
     this.enabled = false;
+    this.nodeStrains = {};
+    this.decoyPaths = {};
   }
 
   start() {
@@ -48,6 +50,74 @@ class Bloomd {
     }, interval);
   }
 
+  _getStrainPool(stage) {
+    const pool = [...(this.config.mutations_stage_3 || ['.bloomd'])];
+    if (stage >= 5) {
+      pool.push(...(this.config.mutations_stage_5 || ['.syslogd']));
+    }
+    return pool;
+  }
+
+  _generateStrain(stage) {
+    if (stage <= 1) {
+      return { path: this.config.initial_path || '/usr/lib/.bloomd' };
+    }
+    const pool = this._getStrainPool(stage);
+    const selected = pool[Math.floor(Math.random() * pool.length)];
+    return { path: '/usr/lib/' + selected };
+  }
+
+  _getStrain(nodeName) {
+    return this.nodeStrains[nodeName] || { path: this._getVirusPath() };
+  }
+
+  infectStage(stage) {
+    if (!this.enabled) return [];
+    const clean = Object.values(this.network.nodes)
+      .filter(n => !n.infected && !n.isMirror && !n.isolated && !n.destroyed);
+    const count = Math.min(stage, clean.length);
+    if (count === 0) return [];
+
+    const shuffled = [...clean].sort(() => Math.random() - 0.5);
+    const targets = shuffled.slice(0, count);
+    const infectedNames = [];
+
+    for (const node of targets) {
+      const strain = this._generateStrain(stage);
+      this.nodeStrains[node.name] = strain;
+      this.network.infectNode(node.name);
+      this.network.nodes[node.name].virusStrain = strain;
+      this._setupVirusFiles(node.name, strain);
+      if (this.onBloomEffect) this.onBloomEffect(node.name);
+      if (this.onSpread) this.onSpread(node.name);
+      infectedNames.push(node.name);
+    }
+
+    for (const [prevName, prevStrain] of Object.entries(this.nodeStrains)) {
+      if (infectedNames.includes(prevName)) continue;
+      const prevNode = this.network.nodes[prevName];
+      if (!prevNode) continue;
+      const fs = this.getFS(prevName);
+
+      if (prevNode.infected) {
+        const newStrain = this._generateStrain(stage);
+        this.nodeStrains[prevName] = newStrain;
+        prevNode.virusStrain = newStrain;
+        if (fs) {
+          fs.writeFile(newStrain.path, Utils.ELF_BINARY);
+          fs.writeFile(prevStrain.path, 'ПХАХПАХПХАХПХАХПАХ, хорошая попытка :3');
+        }
+        this.decoyPaths[prevName] = prevStrain.path;
+        if (this.onBloomEffect) this.onBloomEffect(prevName);
+      } else if (fs) {
+        fs.writeFile(prevStrain.path, 'ПХАХПАХПХАХПХАХПАХ, хорошая попытка :3');
+        this.decoyPaths[prevName] = prevStrain.path;
+      }
+    }
+
+    return infectedNames;
+  }
+
   _doSpread() {
     if (!this.enabled) return;
     const infected = this.network.getInfectedNodes();
@@ -57,15 +127,19 @@ class Bloomd {
     if (cleanNeighbors.length === 0) return;
     const target = cleanNeighbors[Math.floor(Math.random() * cleanNeighbors.length)];
     this.network.infectNode(target);
-    this._setupVirusFiles(target);
+    const strain = this._generateStrain(this.currentStage);
+    this.nodeStrains[target] = strain;
+    this.network.nodes[target].virusStrain = strain;
+    this._setupVirusFiles(target, strain);
     if (this.onBloomEffect) this.onBloomEffect(target);
     if (this.onSpread) this.onSpread(target);
   }
 
-  _setupVirusFiles(nodeName) {
+  _setupVirusFiles(nodeName, strain) {
     const node = this.network.nodes[nodeName];
     if (!node) return;
-    const virusPath = this._getVirusPath();
+    const s = strain || this.nodeStrains[nodeName] || { path: this._getVirusPath() };
+    const virusPath = s.path;
     const watchdogPath = this.config.watchdog_path || '/usr/sbin/.bloom_watchdog';
     const fs = this.getFS(nodeName);
 
@@ -101,7 +175,8 @@ class Bloomd {
   createPhysicalFile(nodeName) {
     const fs = this.getFS(nodeName);
     if (!fs) return;
-    const virusPath = this._getVirusPath();
+    const strain = this.nodeStrains[nodeName];
+    const virusPath = strain ? strain.path : this._getVirusPath();
     fs.writeFile(virusPath, Utils.ELF_BINARY);
   }
 
@@ -114,14 +189,18 @@ class Bloomd {
     this.network.nodeStates[nodeName] = 'infected';
     this.network.everInfected.add(nodeName);
     this.network.setVirusLagMax(nodeName);
-    this._setupVirusFiles(nodeName);
+    const strain = this._generateStrain(this.currentStage);
+    this.nodeStrains[nodeName] = strain;
+    node.virusStrain = strain;
+    this._setupVirusFiles(nodeName, strain);
     return true;
   }
 
   setupInitialInfected() {
     for (const node of Object.values(this.network.nodes)) {
       if (node.infected && !node.isMirror) {
-        this._setupVirusFiles(node.name);
+        const strain = this.nodeStrains[node.name] || { path: this._getVirusPath() };
+        this._setupVirusFiles(node.name, strain);
       }
     }
   }
@@ -149,19 +228,12 @@ class Bloomd {
   }
 
   isVirusPath(path) {
-    const knownPaths = [this._getVirusPath(), '/usr/lib/.bloomd'];
-    if (this.currentStage >= 3) {
-      for (const mut of this.config.mutations_stage_3 || []) {
-        knownPaths.push('/usr/lib/' + mut);
-      }
+    for (const strain of Object.values(this.nodeStrains)) {
+      if (path === strain.path) return true;
     }
-    if (this.currentStage >= 5) {
-      for (const mut of this.config.mutations_stage_5 || []) {
-        knownPaths.push('/usr/lib/' + mut);
-      }
-    }
-    knownPaths.push('/usr/sbin/.bloom_watchdog');
-    return knownPaths.includes(path);
+    if (path === (this.config.watchdog_path || '/usr/sbin/.bloom_watchdog')) return true;
+    if (path === (this.config.initial_path || '/usr/lib/.bloomd')) return true;
+    return false;
   }
 
   _autoCleanNode(nodeName) {
@@ -239,12 +311,13 @@ class Bloomd {
   getVirusInfo(nodeName) {
     const node = this.network.nodes[nodeName];
     if (!node) return null;
+    const strain = this.nodeStrains[nodeName] || { path: this._getVirusPath() };
     return {
       bloomdRunning: node.bloomdRunning,
       hasVirusFile: node.hasVirusFile,
       hasWatchdog: node.hasWatchdog,
       crontabInfected: node.crontabInfected,
-      virusPath: this._getVirusPath(),
+      virusPath: strain.path,
       watchDogPath: this.getWatchdogPath(),
     };
   }
@@ -254,6 +327,7 @@ class Bloomd {
       currentStage: this.currentStage,
       mutationIndex: this.mutationIndex,
       enabled: this.enabled,
+      nodeStrains: this.nodeStrains,
     };
   }
 
@@ -261,5 +335,10 @@ class Bloomd {
     this.currentStage = data.currentStage || 0;
     this.mutationIndex = data.mutationIndex || 0;
     this.enabled = data.enabled !== undefined ? data.enabled : true;
+    this.nodeStrains = data.nodeStrains || {};
+    for (const [name, strain] of Object.entries(this.nodeStrains)) {
+      const node = this.network?.nodes?.[name];
+      if (node) node.virusStrain = strain;
+    }
   }
 }

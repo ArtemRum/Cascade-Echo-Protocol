@@ -410,7 +410,7 @@ class CommandParser {
       let filtered = all ? entries : entries.filter(e => !e.hidden);
       if (filtered.length === 0) return '';
       if (!long) {
-        return filtered.map(e => (e.hidden ? '.' : '') + e.name).join('  ');
+        return filtered.map(e => e.name).join('  ');
       }
       return filtered.map(e => {
         const perms = e.permissions || (e.type === 'dir' ? 'drwxr-xr-x' : '-rw-r--r--');
@@ -626,14 +626,15 @@ class CommandParser {
     ];
     const PID = CommandParser.PIDS;
     if (node.bloomdRunning) {
-      processes.push({ pid: PID.BLOOMD, ppid: 1, cpu: 12.1, mem: 3.2, cmd: '/usr/lib/.bloomd' });
+      const strain = this.game?.virus?.nodeStrains?.[nodeName];
+      processes.push({ pid: PID.BLOOMD, ppid: 1, cpu: 12.1, mem: 3.2, cmd: strain?.path || '/usr/lib/.bloomd' });
     }
     if (node.hasWatchdog) {
       processes.push({ pid: PID.WATCHDOG, ppid: 1, cpu: 0.5, mem: 0.1, cmd: '/usr/sbin/.bloom_watchdog' });
     }
     if (nodeName === 'dmz-01' && this.game?.story?.currentStage === 0 &&
         !this.game?.puzzles?.puzzleState?.tutorialProcessKilled) {
-      processes.push({ pid: PID.TUTORIAL, ppid: 1, cpu: 5.2, mem: 1.1, cmd: '/tmp/.test_virus_daemon' });
+      processes.push({ pid: PID.TUTORIAL, ppid: 1, cpu: 5.2, mem: 1.1, cmd: '/tmp/.test_virus' });
     }
     output += processes.map(p =>
       `${String(p.pid).padStart(5)} ${String(p.ppid).padStart(5)} ${String(p.cpu.toFixed(1)).padStart(5)} ${String(p.mem.toFixed(1)).padStart(5)}  ${p.cmd}`
@@ -686,7 +687,8 @@ class CommandParser {
     const node = network.nodes[nodeName];
     if (!node) return 'Node not found.';
     const clock = this.game?.gameClock;
-    const timeStr = clock ? clock.toLocaleTimeString() : new Date().toLocaleTimeString();
+    const d = clock ? clock.now() : new Date();
+    const timeStr = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
     let output = 'top - ' + timeStr + '  up 1 day, 3:42,  1 user,  load average: 0.12, 0.08, 0.05\n';
     output += 'Tasks:  45 total,   1 running,  44 sleeping,   0 stopped,   0 zombie\n';
     output += '%Cpu(s):  3.2 us,  1.5 sy,  0.0 ni, 95.0 id,  0.3 wa,  0.0 hi,  0.0 si\n';
@@ -704,10 +706,16 @@ class CommandParser {
     ];
     const PID = CommandParser.PIDS;
     if (node.bloomdRunning) {
-      procs.push([PID.BLOOMD, 'root', 20, 0, '128M', '64M', '16M', 'S', 12.1, 3.2, '2:15.10', '.bloomd']);
+      const strain = this.game?.virus?.nodeStrains?.[nodeName];
+      const name = strain ? strain.path.split('/').pop() : '.bloomd';
+      procs.push([PID.BLOOMD, 'root', 20, 0, '128M', '64M', '16M', 'S', 12.1, 3.2, '2:15.10', name]);
     }
     if (node.hasWatchdog) {
       procs.push([PID.WATCHDOG, 'root', 20, 0, '16M', '8M', '2M', 'S', 0.5, 0.1, '0:00.45', '.bloom_watchdog']);
+    }
+    if (nodeName === 'dmz-01' && this.game?.story?.currentStage === 0 &&
+        !this.game?.puzzles?.puzzleState?.tutorialProcessKilled) {
+      procs.push([PID.TUTORIAL, 'root', 20, 0, '8M', '4M', '1M', 'R', 5.2, 1.1, '0:00.12', '.test_virus']);
     }
     output += procs.map(p =>
       `${String(p[0]).padStart(5)} ${p[1].padEnd(8)} ${String(p[2]).padStart(2)} ${String(p[3]).padStart(2)} ${p[4].padStart(7)} ${p[5].padStart(7)} ${p[6].padStart(7)} ${p[7]} ${String(p[8]).padStart(5)} ${String(p[9]).padStart(5)} ${p[10].padStart(10)} ${p[11]}`

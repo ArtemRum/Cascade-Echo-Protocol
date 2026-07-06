@@ -136,6 +136,7 @@ describe('Bloomd — removeFile', () => {
     fs.mkdir('/usr');
     fs.mkdir('/usr/lib');
     fs.writeFile('/usr/lib/.bloomd', 'x');
+    net.nodes['dmz-03'].hasVirusFile = true;
     const getFS = () => fs;
     const virus = new Bloomd(net, virusConfig, getFS);
     virus.removeFile('dmz-03', '/usr/lib/.bloomd');

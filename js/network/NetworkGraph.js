@@ -29,6 +29,7 @@ class NetworkGraph {
         virusLag: 0,
         virusLagMax: 0,
         destroyed: false,
+        virusStrain: null,
       };
       this.nodeStates[id] = this.initialInfected.includes(id) ? 'infected' : 'clean';
     }
@@ -63,6 +64,7 @@ class NetworkGraph {
         virusLag: 0,
         virusLagMax: 0,
         destroyed: false,
+        virusStrain: null,
         isMirror: true,
         driftPattern: proxy.drift_pattern || '+5',
         driftInterval: proxy.drift_interval || 20,
@@ -214,6 +216,7 @@ class NetworkGraph {
         virusLag: node.virusLag,
         virusLagMax: node.virusLagMax,
         destroyed: node.destroyed,
+        virusStrain: node.virusStrain || null,
       };
     }
     state.__everInfected = Array.from(this.everInfected);
@@ -236,6 +239,7 @@ class NetworkGraph {
         node.virusLag = saved.virusLag || 0;
         node.virusLagMax = saved.virusLagMax || 0;
         node.destroyed = saved.destroyed || false;
+        node.virusStrain = saved.virusStrain || null;
         this.nodeStates[name] = saved.destroyed ? 'destroyed' : saved.infected ? 'infected' : saved.isolated ? 'isolated' : 'clean';
       }
     }
